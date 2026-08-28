@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
@@ -8,19 +8,39 @@ import { availableGames } from '../game-data/AvailableGames';
 import ProgressIndicator from '../components/ProgressIndicator';
 import PlayfulBackgroundShapes from '../components/PlayfulBackgroundShapes';
 import CameraPreview from '../components/CameraPreview';
+import DetectedPlayerOverlay from '../components/DetectedPlayerOverlay';
 import { startCameraStream } from '../camera/StartCameraStream';
 import { stopCameraStream } from '../camera/StopCameraStream';
 import { getFriendlyCameraErrorMessage } from '../camera/CameraStreamError';
 import type { CameraErrorType } from '../camera/CameraStreamError';
 
+// Computer vision imports
+import { initializePoseDetection } from '../computer-vision/InitializePoseDetection';
+import { initializeHandDetection } from '../computer-vision/InitializeHandDetection';
+import { detectBodyPose } from '../computer-vision/DetectBodyPose';
+import { detectHandLandmarks } from '../computer-vision/DetectHandLandmarks';
+import { detectPlayers } from '../computer-vision/DetectPlayers';
+import type { DetectedPlayer } from '../computer-vision/ComputerVisionTypes';
+import type { PoseLandmarker, HandLandmarker } from '@mediapipe/tasks-vision';
+
 export default function CameraSetupScreen() {
   const navigate = useNavigate();
   const { player1, player2, selectedGameId, isSessionReady } = useGameSession();
 
-  // Camera stream and lifecycle states
+  // Camera stream and UI states
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [status, setStatus] = useState<'waiting' | 'connecting' | 'working' | 'error'>('waiting');
-  const [errorType, setErrorType] = useState<CameraErrorType | null>(null);
+  const [status, setStatus] = useState<'waiting' | 'connecting' | 'loading-vision' | 'working' | 'error'>('waiting');
+  const [errorType, setErrorType] = useState<CameraErrorType | 'VISION_INIT_FAILED' | null>(null);
+
+  // Vision detection state
+  const [players, setPlayers] = useState<DetectedPlayer[]>([]);
+
+  // Refs for tracking background task instances
+  const poseLandmarkerRef = useRef<PoseLandmarker | null>(null);
+  const handLandmarkerRef = useRef<HandLandmarker | null>(null);
+  const loopActiveRef = useRef<boolean>(false);
+  const animationFrameIdRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Redirection Guards
   if (!isSessionReady()) {
@@ -32,35 +52,128 @@ export default function CameraSetupScreen() {
 
   const selectedGame = availableGames.find((g) => g.id === selectedGameId);
 
-  // Stop camera tracks cleanly
+  // Stop camera stream cleanly
   const handleStopCamera = () => {
-    stopCameraStream(stream);
+    stopCameraStream(streamRef.current);
     setStream(null);
-    setStatus('waiting');
+    streamRef.current = null;
   };
 
-  // Start camera stream request
+  // Start camera stream & initialize MediaPipe models
   const handleStartCamera = async () => {
     setStatus('connecting');
     setErrorType(null);
+    
+    let activeStream: MediaStream | null = null;
     try {
-      const cameraStream = await startCameraStream();
-      setStream(cameraStream);
+      // 1. Start webcam stream
+      activeStream = await startCameraStream();
+      setStream(activeStream);
+      streamRef.current = activeStream;
+      
+      // 2. Set to loading vision state
+      setStatus('loading-vision');
+
+      // 3. Load MediaPipe task models
+      if (!poseLandmarkerRef.current) {
+        poseLandmarkerRef.current = await initializePoseDetection();
+      }
+      if (!handLandmarkerRef.current) {
+        handLandmarkerRef.current = await initializeHandDetection();
+      }
+
+      // 4. Everything ready! Set status to working
       setStatus('working');
     } catch (err: any) {
-      setErrorType(err.message as CameraErrorType);
+      console.error('Camera/Vision setup error:', err);
+      // Clean up stream if open
+      if (activeStream) {
+        stopCameraStream(activeStream);
+        setStream(null);
+        streamRef.current = null;
+      }
+      
+      // Categorize failure
+      if (
+        err.message === 'PERMISSION_DENIED' || 
+        err.message === 'NO_CAMERA_FOUND' || 
+        err.message === 'CAMERA_IN_USE' || 
+        err.message === 'BROWSER_UNSUPPORTED'
+      ) {
+        setErrorType(err.message as CameraErrorType);
+      } else {
+        setErrorType('VISION_INIT_FAILED');
+      }
       setStatus('error');
-      stopCameraStream(stream);
-      setStream(null);
     }
   };
 
-  // Lifecycle useEffect hook to automatically stop stream on unmount
+  // Real-time computer vision detection loop
+  useEffect(() => {
+    const runDetection = () => {
+      const videoElement = document.getElementById('vybe-webcam-video') as HTMLVideoElement | null;
+      const poseLandmarker = poseLandmarkerRef.current;
+      const handLandmarker = handLandmarkerRef.current;
+
+      if (videoElement && videoElement.readyState >= 2 && poseLandmarker && handLandmarker) {
+        const timestamp = performance.now();
+        
+        // 1. Detect body poses
+        const poseResult = detectBodyPose(poseLandmarker, videoElement, timestamp);
+        
+        // 2. Detect hand landmarks
+        const handResult = detectHandLandmarks(handLandmarker, videoElement, timestamp);
+        
+        // 3. Combine results, order players left-to-right, and match hands
+        const detectedPlayers = detectPlayers(poseResult, handResult);
+        
+        setPlayers(detectedPlayers);
+      }
+
+      if (loopActiveRef.current) {
+        animationFrameIdRef.current = requestAnimationFrame(runDetection);
+      }
+    };
+
+    if (status === 'working') {
+      loopActiveRef.current = true;
+      animationFrameIdRef.current = requestAnimationFrame(runDetection);
+    } else {
+      loopActiveRef.current = false;
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+        animationFrameIdRef.current = null;
+      }
+      setPlayers([]);
+    }
+
+    return () => {
+      loopActiveRef.current = false;
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+        animationFrameIdRef.current = null;
+      }
+    };
+  }, [status]);
+
+  // Clean release of models and cameras on unmount
   useEffect(() => {
     return () => {
-      stopCameraStream(stream);
+      // Release camera tracks
+      if (streamRef.current) {
+        stopCameraStream(streamRef.current);
+      }
+      // Release MediaPipe resources
+      if (poseLandmarkerRef.current) {
+        poseLandmarkerRef.current.close();
+        poseLandmarkerRef.current = null;
+      }
+      if (handLandmarkerRef.current) {
+        handLandmarkerRef.current.close();
+        handLandmarkerRef.current = null;
+      }
     };
-  }, [stream]);
+  }, []);
 
   const handleBack = () => {
     handleStopCamera();
@@ -70,6 +183,27 @@ export default function CameraSetupScreen() {
   const handleReady = () => {
     handleStopCamera();
     navigate('/play');
+  };
+
+  // Determine friendly header messages based on players count
+  const getVisionStatusText = () => {
+    if (players.length === 0) {
+      return 'No players detected';
+    } else if (players.length === 1) {
+      return '1 Player Detected';
+    } else {
+      return '2 Players Detected';
+    }
+  };
+
+  const getVisionGuidanceText = () => {
+    if (players.length === 0) {
+      return 'Step into the camera frame';
+    } else if (players.length === 1) {
+      return 'We need one more player';
+    } else {
+      return '2 Players ready!';
+    }
   };
 
   const headerVariants: Variants = {
@@ -156,17 +290,17 @@ export default function CameraSetupScreen() {
             variants={textItemVariants}
             className="font-display font-black text-3xl sm:text-4xl text-slate-900 tracking-tight leading-none uppercase mb-1"
           >
-            Camera Check
+            {status === 'working' ? getVisionStatusText() : 'Camera Check'}
           </motion.h1>
           <motion.p 
             variants={textItemVariants}
-            className="font-sans font-semibold text-xs sm:text-sm text-slate-500"
+            className="font-sans font-semibold text-xs sm:text-sm text-slate-555"
           >
-            {status === 'working' ? 'Get yourselves in position' : 'VYBE needs your camera to turn movement into gameplay'}
+            {status === 'working' ? getVisionGuidanceText() : 'VYBE needs your camera to turn movement into gameplay'}
           </motion.p>
         </motion.div>
 
-        {/* Active stream or Request Panels */}
+        {/* Active Stream / Models Setup */}
         <div className="w-full flex justify-center">
           <AnimatePresence mode="wait">
             {status === 'waiting' && (
@@ -175,7 +309,7 @@ export default function CameraSetupScreen() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="w-full max-w-md p-8 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky flex flex-col items-center text-center animate-fade"
+                className="w-full max-w-md p-8 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky flex flex-col items-center text-center"
               >
                 <div className="w-16 h-16 rounded-2xl bg-brand-purple/10 border-2 border-slate-950 flex items-center justify-center mb-6 text-brand-purple shadow-chunky-sm">
                   <Camera className="w-8 h-8 stroke-[2.5]" />
@@ -186,7 +320,7 @@ export default function CameraSetupScreen() {
                 </h3>
                 
                 <p className="font-sans text-xs text-slate-550 leading-relaxed mb-6 font-semibold">
-                  VYBE processes your camera feed locally on your device. Video frames are never recorded or uploaded.
+                  VYBE processes your camera feed locally in the browser. Video frames are never recorded or uploaded to the cloud.
                 </p>
 
                 <div className="relative group w-full max-w-[180px]">
@@ -210,8 +344,26 @@ export default function CameraSetupScreen() {
                 className="w-full max-w-md p-10 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky flex flex-col items-center justify-center text-center aspect-[4/3]"
               >
                 <div className="w-10 h-10 rounded-full border-4 border-dashed border-brand-purple animate-spin mb-4" />
-                <span className="font-mono text-xs font-black uppercase tracking-widest text-slate-505 animate-pulse">
+                <span className="font-mono text-xs font-black uppercase tracking-widest text-slate-500 animate-pulse">
                   Connecting Camera...
+                </span>
+              </motion.div>
+            )}
+
+            {status === 'loading-vision' && (
+              <motion.div
+                key="loading-vision"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="w-full max-w-md p-10 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky flex flex-col items-center justify-center text-center aspect-[4/3]"
+              >
+                <div className="w-10 h-10 rounded-full border-4 border-dashed border-brand-purple animate-spin mb-4" />
+                <h3 className="font-display font-black text-lg text-slate-900 uppercase mb-2">
+                  Getting VYBE Ready...
+                </h3>
+                <span className="font-sans text-xs font-semibold text-slate-500 animate-pulse">
+                  Loading camera vision models
                 </span>
               </motion.div>
             )}
@@ -229,11 +381,13 @@ export default function CameraSetupScreen() {
                 </div>
                 
                 <h3 className="font-display font-black text-xl text-slate-900 uppercase mb-2">
-                  Camera Unavailable
+                  Vision System Offline
                 </h3>
                 
-                <p className="font-sans text-xs text-slate-550 leading-relaxed mb-6 font-semibold px-2">
-                  {getFriendlyCameraErrorMessage(errorType)}
+                <p className="font-sans text-xs text-slate-555 leading-relaxed mb-6 font-semibold px-2">
+                  {errorType === 'VISION_INIT_FAILED' 
+                    ? 'Something went wrong loading the computer-vision system. Please try again.' 
+                    : getFriendlyCameraErrorMessage(errorType)}
                 </p>
 
                 <div className="relative group w-full max-w-[160px]">
@@ -256,11 +410,14 @@ export default function CameraSetupScreen() {
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="w-full max-w-md flex flex-col items-center gap-3"
               >
-                {/* Embedded Mirrored live preview component */}
-                <CameraPreview stream={stream} />
+                {/* Visual camera feed with skeleton overlay */}
+                <div className="relative w-full">
+                  <CameraPreview stream={stream} />
+                  <DetectedPlayerOverlay players={players} />
+                </div>
 
-                {/* Player Matchup Tagline */}
-                <div className="flex items-center gap-3 px-5 py-2.5 bg-white border-2 border-slate-950 rounded-2xl shadow-chunky-sm text-xs font-display font-black tracking-widest uppercase">
+                {/* Player Matchup Banner */}
+                <div className="flex items-center gap-3 px-5 py-2 bg-white border-2 border-slate-950 rounded-2xl shadow-chunky-sm text-xs font-display font-black tracking-widest uppercase z-10">
                   <span>{player1.name}</span>
                   <span className="px-2 py-0.5 rounded bg-brand-coral border border-slate-950 text-white text-[9px] scale-95">VS</span>
                   <span>{player2.name}</span>
@@ -279,20 +436,20 @@ export default function CameraSetupScreen() {
         transition={{ delay: 0.7 }}
         className="w-full flex flex-col items-center z-10"
       >
-        {/* Ready Button */}
+        {/* Ready Button - Enabled only when exactly 2 players are detected */}
         <div className="relative group w-full max-w-[200px] select-none">
           <span 
             className={`absolute inset-0 w-full h-full rounded-2xl translate-x-1.5 translate-y-1.5 transition-transform ${
-              status === 'working' 
+              status === 'working' && players.length === 2
                 ? 'bg-slate-950 group-hover:translate-x-2 group-hover:translate-y-2 group-active:translate-x-0.5 group-active:translate-y-0.5' 
                 : 'bg-slate-300'
             }`} 
           />
           <button
             onClick={handleReady}
-            disabled={status !== 'working'}
+            disabled={status !== 'working' || players.length !== 2}
             className={`relative w-full flex items-center justify-center gap-2 px-6 py-4 border-2 rounded-2xl font-display font-black text-lg uppercase tracking-wider transition-all duration-100 ${
-              status === 'working'
+              status === 'working' && players.length === 2
                 ? 'bg-brand-purple border-slate-950 text-white cursor-pointer hover:-translate-y-1 active:translate-y-1.5 focus:outline-none focus:ring-4 focus:ring-brand-purple/50'
                 : 'bg-slate-100 border-slate-300 text-slate-400 cursor-not-allowed'
             }`}
