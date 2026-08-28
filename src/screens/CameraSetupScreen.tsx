@@ -75,15 +75,15 @@ export default function CameraSetupScreen() {
         </div>
         
         <h2 className="font-display font-black text-3xl sm:text-4xl tracking-tight mb-3 text-slate-950 uppercase">
-          Camera Setup
+          Get Ready
         </h2>
         
         <p className="font-sans text-sm sm:text-base text-slate-500 leading-relaxed mb-8">
-          Position your webcam so both players are visible in the frame.
+          Camera setup starts in the next phase.
         </p>
 
         <div className="inline-flex px-5 py-2.5 rounded-full bg-brand-yellow border-2 border-slate-950 text-slate-950 font-display font-black text-xs uppercase tracking-wider shadow-chunky-sm animate-pulse-slow">
-          Coming next — Phase 3
+          Phase 3 Preview
         </div>
       </motion.div>
 

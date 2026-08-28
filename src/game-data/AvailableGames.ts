@@ -1,31 +1,39 @@
 export interface GameDefinition {
   id: string;
   name: string;
-  shortDescription: string;
+  tagline: string;
   description: string;
   gameNumber: string;
+  focus: string;
+  detectionType: string;
 }
 
 export const availableGames: GameDefinition[] = [
   {
+    id: 'copy-cat',
+    name: 'Copy Cat',
+    tagline: 'Copy the move. Match the pose.',
+    description: 'One player acts as the Leader performing poses, while the other player copies them. VYBE compares body pose landmarks to calculate a Match Score from 0 to 100%.',
+    gameNumber: '01',
+    focus: 'Accuracy',
+    detectionType: 'POSE MATCHING',
+  },
+  {
     id: 'ice-breaker',
     name: 'Ice Breaker',
-    shortDescription: 'React fast. Match the challenge.',
-    description: 'Perform physical actions and poses in front of the camera under time pressure! Copy movements like raising hands, crouching, or pointing.',
-    gameNumber: '01',
-  },
-  {
-    id: 'hand-battle',
-    name: 'Hand Battle',
-    shortDescription: 'Rock. Paper. Scissors. Your hands are the controller.',
-    description: 'Compete in a classic duel using pure hand gesture detection. Face off in Rock, Paper, Scissors using your actual hands!',
+    tagline: 'See it. Do it. Score it.',
+    description: 'Players receive quick physical action challenges (raise left/right/both hands, touch head, crouch, wave) and must complete them before the timer runs out.',
     gameNumber: '02',
+    focus: 'Following challenges',
+    detectionType: 'ACTION DETECTION',
   },
   {
-    id: 'mirror-dance',
-    name: 'Mirror Dance',
-    shortDescription: 'Copy the move. Beat the score.',
-    description: 'A movement-matching rhythm game! One player strikes poses, and the other must copy the body posture perfectly to stay in sync.',
+    id: 'reaction-rush',
+    name: 'Reaction Rush',
+    tagline: 'React first. Win first.',
+    description: 'A speed race! When visual prompts like "JUMP!" or "MOVE LEFT!" appear, the player who reacts first and fastest wins the round.',
     gameNumber: '03',
+    focus: 'Speed',
+    detectionType: 'REACTION DETECTION',
   },
 ];

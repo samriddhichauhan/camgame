@@ -1,5 +1,5 @@
 import { useNavigate, Navigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useGameSession } from '../context/GameSessionContext';
@@ -18,10 +18,12 @@ export default function GameSelectionScreen() {
     isSessionReady,
   } = useGameSession();
 
-  // Navigation Guard: Redirect back to player setup if names are missing
+  // Navigation Guard: Redirect to /players if names are missing
   if (!isSessionReady()) {
     return <Navigate to="/players" replace />;
   }
+
+  const selectedGame = availableGames.find((g) => g.id === selectedGameId);
 
   const handleContinue = () => {
     if (selectedGameId) {
@@ -105,24 +107,34 @@ export default function GameSelectionScreen() {
       {/* Main Section */}
       <div className="flex flex-col items-center gap-4 sm:gap-6 z-10 my-auto w-full max-w-5xl px-2 overflow-hidden">
         
-        {/* Page Title */}
+        {/* Page Title & Matchup */}
         <motion.div
           variants={titleContainerVariants}
           initial="hidden"
           animate="visible"
-          className="text-center"
+          className="text-center flex flex-col items-center"
         >
+          {/* Matchup Header Banner */}
+          <motion.div 
+            variants={textItemVariants}
+            className="inline-flex items-center gap-3 px-5 py-2 mb-2 bg-white border-2 border-slate-950 rounded-2xl shadow-chunky-sm text-xs sm:text-sm font-display font-black tracking-widest uppercase"
+          >
+            <span className="text-slate-700">{player1.name}</span>
+            <span className="px-2 py-0.5 rounded bg-brand-coral border border-slate-950 text-white text-[9px] sm:text-[10px] scale-95">VS</span>
+            <span className="text-slate-700">{player2.name}</span>
+          </motion.div>
+
           <motion.h1 
             variants={textItemVariants}
-            className="font-display font-black text-3xl sm:text-5xl text-slate-900 tracking-tight leading-none uppercase mb-1 sm:mb-2"
+            className="font-display font-black text-3xl sm:text-5xl text-slate-900 tracking-tight leading-none uppercase mb-1"
           >
             Choose your game
           </motion.h1>
           <motion.p 
             variants={textItemVariants}
-            className="font-sans font-medium text-xs sm:text-base text-slate-500"
+            className="font-sans font-medium text-xs sm:text-sm text-slate-500"
           >
-            Pick a challenge and see who has the best VYBE, <span className="font-bold text-slate-700">{player1.name}</span> & <span className="font-bold text-slate-700">{player2.name}</span>!
+            Pick your challenge.
           </motion.p>
         </motion.div>
 
@@ -131,7 +143,7 @@ export default function GameSelectionScreen() {
           variants={cardsContainerVariants}
           initial="hidden"
           animate="visible"
-          className="w-full flex flex-col md:flex-row justify-center items-center gap-5 sm:gap-6 max-h-[58vh] md:max-h-[none] overflow-y-auto md:overflow-y-visible px-2 py-2"
+          className="w-full flex flex-col md:flex-row justify-center items-center gap-5 sm:gap-6 max-h-[50vh] md:max-h-[none] overflow-y-auto md:overflow-y-visible px-2 py-2"
         >
           {availableGames.map((game) => (
             <GameSelectionCard
@@ -142,6 +154,47 @@ export default function GameSelectionScreen() {
             />
           ))}
         </motion.div>
+
+        {/* Selected Game Info Panel */}
+        <div className="h-20 flex items-center justify-center w-full max-w-md mt-1">
+          <AnimatePresence mode="wait">
+            {selectedGame ? (
+              <motion.div
+                key={selectedGame.id}
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                className="w-full p-4 bg-white border-2 border-slate-950 rounded-2xl shadow-chunky-sm flex justify-between items-center text-left"
+              >
+                <div>
+                  <h4 className="font-display font-black text-sm uppercase text-slate-900 leading-tight">
+                    {selectedGame.name}
+                  </h4>
+                  <p className="font-sans font-semibold text-[11px] text-slate-500 mt-0.5">
+                    {selectedGame.focus}-based challenge
+                  </p>
+                </div>
+                <div className="flex flex-col items-end border-l-2 border-slate-200 pl-4">
+                  <span className="text-[9px] font-display font-bold uppercase text-slate-400 tracking-wider">
+                    Focus Mode
+                  </span>
+                  <span className="text-[10px] font-mono font-black text-brand-purple uppercase mt-0.5">
+                    {selectedGame.detectionType}
+                  </span>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.5 }}
+                className="font-sans font-semibold text-xs text-slate-500 italic text-center"
+              >
+                Select a game above to see details.
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </div>
 
       </div>
 
