@@ -5,6 +5,7 @@ import { useGameSession } from '../context/GameSessionContext';
 import { availableGames } from '../game-data/AvailableGames';
 import ProgressIndicator from '../components/ProgressIndicator';
 import PlayfulBackgroundShapes from '../components/PlayfulBackgroundShapes';
+import CopyCatGame from '../games/CopyCat/CopyCatGame';
 
 export default function PlayGameScreen() {
   const navigate = useNavigate();
@@ -16,6 +17,11 @@ export default function PlayGameScreen() {
   }
   if (!selectedGameId) {
     return <Navigate to="/games" replace />;
+  }
+
+  // Route directly to Copy Cat game component if active
+  if (selectedGameId === 'copy-cat') {
+    return <CopyCatGame />;
   }
 
   const selectedGame = availableGames.find((g) => g.id === selectedGameId);
@@ -49,14 +55,13 @@ export default function PlayGameScreen() {
         <div className="w-[80px] hidden sm:block pointer-events-none opacity-0" />
       </div>
 
-      {/* Main card */}
+      {/* Main placeholder card for non-CopyCat games */}
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 180, damping: 15 }}
         className="flex flex-col items-center justify-center text-center max-w-md w-full p-8 sm:p-12 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky z-10 my-auto"
       >
-        {/* Gamepad Icon Block */}
         <div className="w-16 h-16 rounded-2xl bg-brand-purple border-2 border-slate-950 flex items-center justify-center mb-6 shadow-chunky-sm text-white">
           <Gamepad2 className="w-8 h-8 stroke-[2.5]" />
         </div>
@@ -70,7 +75,7 @@ export default function PlayGameScreen() {
           {selectedGame?.name}
         </h2>
         
-        <p className="font-sans text-sm sm:text-base text-slate-550 leading-relaxed mb-8 font-semibold">
+        <p className="font-sans text-sm sm:text-base text-slate-555 leading-relaxed mb-8 font-semibold">
           {selectedGame?.tagline}
         </p>
 
