@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment configurations and Secrets
+.env
+.env.*
+!.env.example
+
+# Credentials and Certificates
+*.pem
+*.key
+certs/
+secrets/
