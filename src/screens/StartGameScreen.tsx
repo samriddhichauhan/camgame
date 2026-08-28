@@ -1,9 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
-import { Camera, Radio } from 'lucide-react';
+import { Camera } from 'lucide-react';
 import VYBELogo from '../components/VYBELogo';
 import StartGameButton from '../components/StartGameButton';
+import PlayfulBackgroundShapes from '../components/PlayfulBackgroundShapes';
 
 export default function StartGameScreen() {
   const navigate = useNavigate();
@@ -12,128 +13,222 @@ export default function StartGameScreen() {
     navigate('/players');
   };
 
-  const overlayVariants: Variants = {
-    hidden: { opacity: 0 },
-    visible: { 
-      opacity: 1, 
-      transition: { duration: 1.2, ease: 'easeOut' } 
-    }
-  };
-
-  const textContainerVariants: Variants = {
+  const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.12,
-        delayChildren: 0.3
-      }
-    }
+        staggerChildren: 0.1,
+      },
+    },
   };
 
   const itemVariants: Variants = {
-    hidden: { opacity: 0, y: 25 },
-    visible: { 
-      opacity: 1, 
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+      opacity: 1,
       y: 0,
       transition: {
         type: 'spring',
-        stiffness: 150,
-        damping: 16
-      }
-    }
+        stiffness: 140,
+        damping: 14,
+      },
+    },
+  };
+
+  const previewBoxVariants: Variants = {
+    hidden: { opacity: 0, scale: 0.9, y: 20 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      y: 0,
+      transition: {
+        type: 'spring',
+        stiffness: 120,
+        damping: 14,
+        delay: 0.3,
+      },
+    },
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden flex flex-col justify-between items-center bg-bg-dark text-slate-100 p-6 sm:p-10 select-none">
+    <div className="relative w-screen h-screen overflow-hidden flex flex-col justify-between items-center bg-bg-cream text-slate-800 p-6 sm:p-8 select-none">
       
-      {/* 1. Ambient Background Grid & Drift */}
-      <div className="absolute inset-0 game-grid-bg opacity-30 animate-grid-drift pointer-events-none" />
+      {/* Playful Floating Shapes Background */}
+      <PlayfulBackgroundShapes />
 
-      {/* 2. Floating Ambient Glow Orbs */}
-      <div className="absolute top-1/4 -left-1/4 w-[400px] h-[400px] sm:w-[500px] sm:h-[500px] bg-brand-violet/15 rounded-full blur-[100px] sm:blur-[120px] animate-float-slow pointer-events-none" />
-      <div className="absolute bottom-1/4 -right-1/4 w-[400px] h-[400px] sm:w-[500px] sm:h-[500px] bg-brand-cyan/15 rounded-full blur-[100px] sm:blur-[120px] animate-float-medium pointer-events-none" />
-
-      {/* 3. High-Tech Camera HUD Overlay */}
-      <motion.div 
-        variants={overlayVariants}
+      {/* Top Section: Header & Branding */}
+      <motion.div
+        variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="absolute inset-4 sm:inset-10 border border-white/[0.03] pointer-events-none flex flex-col justify-between p-4"
-      >
-        {/* HUD Top Bar */}
-        <div className="flex justify-between items-center text-[10px] sm:text-xs font-mono tracking-widest text-slate-400">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-            <span>REC [READY]</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Camera className="w-3.5 h-3.5 text-brand-cyan" />
-            <span>CAM_01_FEED</span>
-          </div>
-        </div>
-
-        {/* HUD Center Crosshair */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
-          <div className="w-6 h-[1px] bg-white" />
-          <div className="h-6 w-[1px] bg-white" />
-        </div>
-
-        {/* HUD Viewfinder Corners */}
-        <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-brand-cyan/40" />
-        <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-brand-cyan/40" />
-        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-brand-cyan/40" />
-        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-brand-cyan/40" />
-
-        {/* HUD Bottom Bar */}
-        <div className="flex justify-between items-center text-[10px] sm:text-xs font-mono tracking-widest text-slate-400 mt-auto">
-          <div className="flex items-center gap-1.5">
-            <Radio className="w-3.5 h-3.5 text-brand-fuchsia animate-pulse" />
-            <span>SIGNAL: ACTIVE</span>
-          </div>
-          <span>NO CONTROLLER NEEDED</span>
-        </div>
-      </motion.div>
-
-      {/* 4. Top Decorative Spacer */}
-      <div className="h-10 w-full opacity-0 pointer-events-none" />
-
-      {/* 5. Main Hero Screen Contents */}
-      <motion.div 
-        variants={textContainerVariants}
-        initial="hidden"
-        animate="visible"
-        className="flex flex-col items-center justify-center text-center max-w-2xl px-4 z-10 my-auto"
+        className="flex flex-col items-center text-center z-10 w-full"
       >
         {/* Logo */}
-        <motion.div variants={itemVariants} className="mb-6 glow-glow">
+        <motion.div variants={itemVariants} className="mb-2">
           <VYBELogo />
         </motion.div>
 
-        {/* Tagline 1 */}
-        <motion.p 
+        {/* Tagline */}
+        <motion.p
           variants={itemVariants}
-          className="font-display font-extrabold text-xs sm:text-sm tracking-[0.25em] uppercase text-brand-cyan"
+          className="font-sans font-bold text-xs sm:text-sm tracking-[0.25em] uppercase text-slate-500"
         >
-          Your camera is the controller.
+          Your camera is the controller
         </motion.p>
+      </motion.div>
 
-        {/* Tagline 2 */}
-        <motion.h1 
-          variants={itemVariants}
-          className="font-display font-black text-4xl sm:text-6xl lg:text-7xl mt-4 mb-8 tracking-tight leading-none text-slate-50"
+      {/* Middle Section: Stylized Camera Preview / Illustration Card */}
+      <motion.div
+        variants={previewBoxVariants}
+        initial="hidden"
+        animate="visible"
+        className="relative w-full max-w-[340px] sm:max-w-[420px] aspect-[4/3] rounded-3xl bg-white border-[3px] border-slate-900 shadow-chunky flex flex-col items-center justify-center p-4 z-10"
+      >
+        {/* Viewfinder HUD Accents */}
+        <div className="absolute top-4 left-4 w-5 h-5 border-t-4 border-l-4 border-slate-900 rounded-tl" />
+        <div className="absolute top-4 right-4 w-5 h-5 border-t-4 border-r-4 border-slate-900 rounded-tr" />
+        <div className="absolute bottom-4 left-4 w-5 h-5 border-b-4 border-l-4 border-slate-900 rounded-bl" />
+        <div className="absolute bottom-4 right-4 w-5 h-5 border-b-4 border-r-4 border-slate-900 rounded-br" />
+
+        {/* Blinking camera HUD tag */}
+        <div className="absolute top-5 left-10 flex items-center gap-1.5 px-2.5 py-1 bg-slate-900 text-white rounded-full text-[9px] font-mono font-bold tracking-wider">
+          <span className="w-1.5 h-1.5 rounded-full bg-brand-coral animate-pulse" />
+          <span>PLAYER CAM</span>
+        </div>
+
+        {/* Center Crosshair */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.08]">
+          <div className="w-8 h-[2px] bg-slate-900" />
+          <div className="h-8 w-[2px] bg-slate-900" />
+        </div>
+
+        {/* Playful Vector Characters in Camera Viewport */}
+        <svg
+          viewBox="0 0 400 300"
+          className="w-full h-full p-2"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          Play. Move. <span className="text-gradient bg-gradient-to-r from-brand-fuchsia to-brand-cyan">Compete.</span>
+          {/* Sparkles / Stars in Viewport */}
+          <g className="text-brand-yellow">
+            <path d="M100 60 L102 67 L109 69 L102 71 L100 78 L98 71 L91 69 L98 67 Z" fill="currentColor" opacity="0.8" />
+            <path d="M300 70 L301.5 75 L307 76.5 L301.5 78 L300 83 L298.5 78 L293 76.5 L298.5 75 Z" fill="currentColor" opacity="0.8" />
+            <path d="M200 45 L202.5 53 L211 55 L202.5 57 L200 65 L197.5 57 L189 55 L197.5 53 Z" fill="currentColor" className="text-brand-coral" />
+          </g>
+
+          {/* Dotted Connection/Gesture line between players */}
+          <path
+            d="M135 150 C 200 130, 200 130, 265 150"
+            stroke="#64748b"
+            strokeWidth="3"
+            strokeDasharray="6 6"
+          />
+          <circle cx="200" cy="138" r="6" fill="#4ade80" />
+
+          {/* Player 1 (Purple Silhouette - Left) */}
+          <g>
+            {/* Body */}
+            <path
+              d="M105 240 C105 210 115 170 135 170 C155 170 165 210 165 240 Z"
+              fill="var(--color-brand-purple)"
+              stroke="#0f172a"
+              strokeWidth="3"
+            />
+            {/* Arms raised waving */}
+            <path
+              d="M110 190 Q90 160 95 140 Q100 120 115 145 Z"
+              fill="var(--color-brand-purple)"
+              stroke="#0f172a"
+              strokeWidth="3"
+            />
+            {/* Head */}
+            <circle
+              cx="135"
+              cy="135"
+              r="22"
+              fill="var(--color-brand-purple)"
+              stroke="#0f172a"
+              strokeWidth="3"
+            />
+            {/* Playful cartoon eyes */}
+            <circle cx="127" cy="133" r="3" fill="#ffffff" />
+            <circle cx="137" cy="133" r="3" fill="#ffffff" />
+            <path d="M129 143 Q132 146 135 143" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+          </g>
+
+          {/* Player 2 (Coral Silhouette - Right) */}
+          <g>
+            {/* Body */}
+            <path
+              d="M235 240 C235 210 245 170 265 170 C285 170 295 210 295 240 Z"
+              fill="var(--color-brand-coral)"
+              stroke="#0f172a"
+              strokeWidth="3"
+            />
+            {/* Arms raised posing */}
+            <path
+              d="M290 190 Q310 160 305 140 Q300 120 285 145 Z"
+              fill="var(--color-brand-coral)"
+              stroke="#0f172a"
+              strokeWidth="3"
+            />
+            {/* Head */}
+            <circle
+              cx="265"
+              cy="135"
+              r="22"
+              fill="var(--color-brand-coral)"
+              stroke="#0f172a"
+              strokeWidth="3"
+            />
+            {/* Playful cartoon eyes */}
+            <circle cx="257" cy="133" r="3" fill="#ffffff" />
+            <circle cx="267" cy="133" r="3" fill="#ffffff" />
+            <path d="M259 143 Q262 146 265 143" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+          </g>
+        </svg>
+
+        {/* Small floating HUD details */}
+        <div className="absolute bottom-5 text-[10px] font-display font-black text-slate-700 tracking-wider flex items-center gap-1.5">
+          <Camera className="w-3.5 h-3.5" />
+          <span>POSITION DETECTED</span>
+        </div>
+      </motion.div>
+
+      {/* Bottom Section: Taglines, CTA Button, and Info capsule */}
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="flex flex-col items-center text-center w-full z-10"
+      >
+        {/* Core Tagline: "Play. Move. Compete." */}
+        <motion.h1
+          variants={itemVariants}
+          className="font-display font-black text-3xl sm:text-4xl text-slate-800 tracking-tight leading-none mb-6"
+        >
+          Play. Move. <span className="text-brand-purple">Compete.</span>
         </motion.h1>
 
-        {/* Start Game CTA Button */}
-        <motion.div variants={itemVariants} className="flex justify-center w-full">
+        {/* CTA Button */}
+        <motion.div variants={itemVariants} className="mb-6 flex justify-center w-full">
           <StartGameButton onClick={handleStart} />
+        </motion.div>
+
+        {/* Games Capsule */}
+        <motion.div
+          variants={itemVariants}
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900 text-white border-2 border-slate-900 text-[10px] sm:text-xs font-display font-black tracking-wider uppercase shadow-chunky-sm"
+        >
+          <span>2 Players</span>
+          <span className="w-1 h-1 rounded-full bg-white/50" />
+          <span>3 Games</span>
         </motion.div>
       </motion.div>
 
-      {/* 6. Footer Decor */}
-      <div className="z-10 text-[10px] sm:text-xs tracking-widest font-mono text-slate-500 uppercase mt-auto pointer-events-none">
+      {/* Footer spacer */}
+      <div className="hidden sm:block text-[9px] font-mono tracking-widest text-slate-400 uppercase pointer-events-none mt-2">
         VYBE Platform © 2026
       </div>
 

@@ -7,36 +7,29 @@ interface StartGameButtonProps {
 
 export default function StartGameButton({ onClick }: StartGameButtonProps) {
   return (
-    <motion.button
-      onClick={onClick}
-      whileHover={{ 
-        scale: 1.05,
-        boxShadow: '0 0 30px rgba(6, 182, 212, 0.7)',
-      }}
-      whileTap={{ scale: 0.96 }}
+    <motion.div
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ 
         type: 'spring', 
-        stiffness: 260, 
-        damping: 18,
+        stiffness: 240, 
+        damping: 16,
         delay: 0.5
       }}
-      className="group relative flex items-center justify-center gap-3 px-10 py-5 sm:px-14 sm:py-6 rounded-full font-display font-black text-xl sm:text-2xl tracking-wider uppercase text-white cursor-pointer select-none overflow-hidden focus:outline-none focus:ring-4 focus:ring-brand-cyan/60 focus:ring-offset-4 focus:ring-offset-bg-dark"
-      aria-label="Start Game"
+      className="relative group w-full max-w-[240px] sm:max-w-[280px] select-none"
     >
-      {/* Base Gradient Layer */}
-      <span className="absolute inset-0 bg-gradient-to-r from-brand-violet via-brand-fuchsia to-brand-cyan transition-transform duration-500 group-hover:scale-105" />
-
-      {/* Hover Shift Gradient Layer */}
-      <span className="absolute inset-0 bg-gradient-to-r from-brand-cyan via-brand-fuchsia to-brand-violet opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-
-      {/* Subtle Inner Glow Border */}
-      <span className="absolute inset-[1px] rounded-full bg-black/10 border border-white/20 pointer-events-none" />
-
-      {/* Content */}
-      <span className="relative z-10 drop-shadow-md">Start Game</span>
-      <Play className="relative z-10 w-6 h-6 sm:w-7 sm:h-7 fill-current group-hover:translate-x-1 transition-transform duration-300 drop-shadow-md" />
-    </motion.button>
+      {/* 3D Bottom Plate / Cartoon Shadow */}
+      <span className="absolute inset-0 w-full h-full bg-slate-950 rounded-2xl translate-x-1.5 translate-y-1.5 group-hover:translate-x-2 group-hover:translate-y-2 group-active:translate-x-0.5 group-active:translate-y-0.5 transition-transform duration-100" />
+      
+      {/* Tactile Button Body */}
+      <button
+        onClick={onClick}
+        className="relative w-full flex items-center justify-center gap-3 px-6 py-4.5 sm:px-10 sm:py-5 bg-brand-coral hover:bg-[#ff6f6f] border-2 border-slate-950 text-white font-display font-black text-xl sm:text-2xl tracking-wider uppercase rounded-2xl cursor-pointer group-hover:-translate-y-1 group-active:translate-y-1.5 transition-transform duration-100 focus:outline-none focus:ring-4 focus:ring-brand-purple/50 focus:ring-offset-4 focus:ring-offset-bg-cream"
+        aria-label="Start Game"
+      >
+        <span>Start Game</span>
+        <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current group-hover:translate-x-0.5 transition-transform" />
+      </button>
+    </motion.div>
   );
 }
