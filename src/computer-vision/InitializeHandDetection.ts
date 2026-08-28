@@ -11,8 +11,8 @@ export async function initializeHandDetection(): Promise<HandLandmarker> {
     },
     runningMode: 'VIDEO',
     numHands: 4,
-    minHandDetectionConfidence: 0.5,
-    minHandPresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5,
+    minHandDetectionConfidence: 0.35,
+    minHandPresenceConfidence: 0.35,
+    minTrackingConfidence: 0.35,
   });
 }

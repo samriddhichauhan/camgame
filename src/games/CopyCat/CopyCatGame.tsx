@@ -44,6 +44,8 @@ export default function CopyCatGame() {
   const loopActiveRef = useRef<boolean>(false);
   const animationFrameIdRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const lastLogTimeRef = useRef<number>(0);
+  const lastPlayerCountRef = useRef<number>(-1);
 
   // Game Engine state
   const [gameState, setGameState] = useState<CopyCatStatus>('intro');
@@ -99,18 +101,64 @@ export default function CopyCatGame() {
 
   // Real-time computer vision frame detection loop
   useEffect(() => {
+    const updateDiagDOM = (vision: string, video: string, size: string, poses: number, playersCount: number, loop: string) => {
+      const elVision = document.getElementById('diag-vision');
+      const elVideo = document.getElementById('diag-video');
+      const elSize = document.getElementById('diag-size');
+      const elPoses = document.getElementById('diag-poses');
+      const elPlayers = document.getElementById('diag-players');
+      const elLoop = document.getElementById('diag-loop');
+
+      if (elVision) elVision.innerText = vision;
+      if (elVideo) {
+        elVideo.innerText = video;
+        elVideo.className = video === 'READY' ? 'text-green-400 font-bold' : 'text-red-400';
+      }
+      if (elSize) elSize.innerText = size;
+      if (elPoses) elPoses.innerText = String(poses);
+      if (elPlayers) elPlayers.innerText = String(playersCount);
+      if (elLoop) {
+        elLoop.innerText = loop;
+        elLoop.className = loop === 'RUNNING' ? 'text-green-400 font-bold' : 'text-red-400';
+      }
+    };
+
     const runDetection = () => {
       const videoElement = document.getElementById('vybe-webcam-video') as HTMLVideoElement | null;
       const poseLandmarker = poseLandmarkerRef.current;
       const handLandmarker = handLandmarkerRef.current;
 
-      if (videoElement && videoElement.readyState >= 2 && poseLandmarker && handLandmarker) {
+      const isVideoReady = videoElement && videoElement.readyState >= 2 && videoElement.videoWidth > 0 && videoElement.videoHeight > 0;
+      const isVisionReady = !!(poseLandmarker && handLandmarker);
+
+      if (isVideoReady && isVisionReady && videoElement && poseLandmarker && handLandmarker) {
         const timestamp = performance.now();
         const poseResult = detectBodyPose(poseLandmarker, videoElement, timestamp);
         const handResult = detectHandLandmarks(handLandmarker, videoElement, timestamp);
         const detectedPlayers = detectPlayers(poseResult, handResult);
         
         setPlayers(detectedPlayers);
+
+        const numPosesDetected = poseResult?.landmarks ? poseResult.landmarks.length : 0;
+        const numPlayersDetected = detectedPlayers.length;
+
+        // Update Diagnostics DOM
+        updateDiagDOM(
+          'READY',
+          'READY',
+          `${videoElement.videoWidth}x${videoElement.videoHeight}`,
+          numPosesDetected,
+          numPlayersDetected,
+          'RUNNING'
+        );
+
+        // Throttled Console Log
+        const now = performance.now();
+        if (now - lastLogTimeRef.current > 2000 || numPlayersDetected !== lastPlayerCountRef.current) {
+          console.log(`[CopyCat Game] MediaPipe raw poses: ${numPosesDetected}, players mapped: ${numPlayersDetected}`);
+          lastLogTimeRef.current = now;
+          lastPlayerCountRef.current = numPlayersDetected;
+        }
 
         // Perform real-time pose calculations depending on game state
         if (gameState === 'leader-pose') {
@@ -129,6 +177,19 @@ export default function CopyCatGame() {
             setLiveScore(Math.round(smoothedScoreRef.current));
           }
         }
+      } else {
+        const readyState = videoElement ? videoElement.readyState : 0;
+        const width = videoElement ? videoElement.videoWidth : 0;
+        const height = videoElement ? videoElement.videoHeight : 0;
+
+        updateDiagDOM(
+          isVisionReady ? 'READY' : (cvStatus === 'loading-vision' ? 'LOADING' : 'ERROR'),
+          videoElement ? `READYSTATE ${readyState}` : 'NOT FOUND',
+          `${width}x${height}`,
+          0,
+          0,
+          loopActiveRef.current ? 'RUNNING' : 'STOPPED'
+        );
       }
 
       if (loopActiveRef.current) {
@@ -702,6 +763,16 @@ export default function CopyCatGame() {
 
       {/* Spacer */}
       <div className="h-10 opacity-0 pointer-events-none" />
+
+      {/* Diagnostics Debug Panel */}
+      <div className="absolute bottom-2 left-2 bg-slate-900/90 text-white font-mono text-[9px] p-2 rounded-lg border border-slate-700 z-50 text-left pointer-events-none select-none flex flex-col gap-0.5">
+        <div>VISION: <span id="diag-vision" className="text-brand-yellow font-bold">INIT</span></div>
+        <div>VIDEO: <span id="diag-video" className="text-red-400">NOT READY</span></div>
+        <div>SIZE: <span id="diag-size">0x0</span></div>
+        <div>POSES: <span id="diag-poses">0</span></div>
+        <div>PLAYERS: <span id="diag-players">0</span></div>
+        <div>LOOP: <span id="diag-loop" className="text-red-400">STOPPED</span></div>
+      </div>
 
     </div>
   );
