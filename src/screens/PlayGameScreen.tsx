@@ -6,6 +6,7 @@ import { availableGames } from '../game-data/AvailableGames';
 import ProgressIndicator from '../components/ProgressIndicator';
 import PlayfulBackgroundShapes from '../components/PlayfulBackgroundShapes';
 import CopyCatGame from '../games/CopyCat/CopyCatGame';
+import IceBreakerGame from '../games/IceBreaker/IceBreakerGame';
 
 export default function PlayGameScreen() {
   const navigate = useNavigate();
@@ -22,6 +23,11 @@ export default function PlayGameScreen() {
   // Route directly to Copy Cat game component if active
   if (selectedGameId === 'copy-cat') {
     return <CopyCatGame />;
+  }
+
+  // Route directly to Ice Breaker game component if active
+  if (selectedGameId === 'ice-breaker') {
+    return <IceBreakerGame />;
   }
 
   const selectedGame = availableGames.find((g) => g.id === selectedGameId);
