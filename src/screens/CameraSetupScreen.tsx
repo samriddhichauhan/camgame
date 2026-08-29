@@ -25,7 +25,9 @@ import type { PoseLandmarker, HandLandmarker } from '@mediapipe/tasks-vision';
 
 export default function CameraSetupScreen() {
   const navigate = useNavigate();
-  const { player1, player2, selectedGameId, isSessionReady } = useGameSession();
+  const { gameMode, player1, player2, selectedGameId, isSessionReady } = useGameSession();
+
+  const requiredPlayers = gameMode === 'SINGLE_PLAYER' ? 1 : 2;
 
   // Camera stream and UI states
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -253,17 +255,25 @@ export default function CameraSetupScreen() {
     } else if (players.length === 1) {
       return '1 Player Detected';
     } else {
-      return '2 Players Detected';
+      return `${players.length} Players Detected`;
     }
   };
 
   const getVisionGuidanceText = () => {
-    if (players.length === 0) {
-      return 'Step into the camera frame';
-    } else if (players.length === 1) {
-      return 'We need one more player';
+    if (gameMode === 'SINGLE_PLAYER') {
+      if (players.length === 0) {
+        return 'Step into the camera frame';
+      } else {
+        return 'Player ready!';
+      }
     } else {
-      return '2 Players ready!';
+      if (players.length === 0) {
+        return 'Step into the camera frame';
+      } else if (players.length === 1) {
+        return 'We need one more player';
+      } else {
+        return '2 Players ready!';
+      }
     }
   };
 
@@ -479,9 +489,18 @@ export default function CameraSetupScreen() {
 
                 {/* Player Matchup Banner */}
                 <div className="flex items-center gap-3 px-5 py-2 bg-white border-2 border-slate-950 rounded-2xl shadow-chunky-sm text-xs font-display font-black tracking-widest uppercase z-10">
-                  <span>{player1.name}</span>
-                  <span className="px-2 py-0.5 rounded bg-brand-coral border border-slate-950 text-white text-[9px] scale-95">VS</span>
-                  <span>{player2.name}</span>
+                  {gameMode === 'SINGLE_PLAYER' ? (
+                    <>
+                      <span className="px-2 py-0.5 rounded bg-brand-purple border border-slate-950 text-white text-[9px]">SOLO PLAY</span>
+                      <span>{player1.name}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{player1.name}</span>
+                      <span className="px-2 py-0.5 rounded bg-brand-coral border border-slate-950 text-white text-[9px] scale-95">VS</span>
+                      <span>{player2.name}</span>
+                    </>
+                  )}
                 </div>
               </motion.div>
             )}
@@ -497,20 +516,20 @@ export default function CameraSetupScreen() {
         transition={{ delay: 0.7 }}
         className="w-full flex flex-col items-center z-10"
       >
-        {/* Ready Button - Enabled only when exactly 2 players are detected */}
+        {/* Ready Button */}
         <div className="relative group w-full max-w-[200px] select-none">
           <span 
             className={`absolute inset-0 w-full h-full rounded-2xl translate-x-1.5 translate-y-1.5 transition-transform ${
-              status === 'working' && players.length === 2
+              status === 'working' && players.length >= requiredPlayers
                 ? 'bg-slate-950 group-hover:translate-x-2 group-hover:translate-y-2 group-active:translate-x-0.5 group-active:translate-y-0.5' 
                 : 'bg-slate-300'
             }`} 
           />
           <button
             onClick={handleReady}
-            disabled={status !== 'working' || players.length !== 2}
+            disabled={status !== 'working' || players.length < requiredPlayers}
             className={`relative w-full flex items-center justify-center gap-2 px-6 py-4 border-2 rounded-2xl font-display font-black text-lg uppercase tracking-wider transition-all duration-100 ${
-              status === 'working' && players.length === 2
+              status === 'working' && players.length >= requiredPlayers
                 ? 'bg-brand-purple border-slate-950 text-white cursor-pointer hover:-translate-y-1 active:translate-y-1.5 focus:outline-none focus:ring-4 focus:ring-brand-purple/50'
                 : 'bg-slate-100 border-slate-300 text-slate-400 cursor-not-allowed'
             }`}

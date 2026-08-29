@@ -1,3 +1,5 @@
+import type { GameMode } from '../context/GameSessionContext';
+
 export interface GameDefinition {
   id: string;
   name: string;
@@ -6,6 +8,7 @@ export interface GameDefinition {
   gameNumber: string;
   focus: string;
   detectionType: string;
+  supportedModes: GameMode[];
 }
 
 export const availableGames: GameDefinition[] = [
@@ -17,6 +20,7 @@ export const availableGames: GameDefinition[] = [
     gameNumber: '01',
     focus: 'Accuracy',
     detectionType: 'POSE MATCHING',
+    supportedModes: ['SINGLE_PLAYER', 'TWO_PLAYERS'],
   },
   {
     id: 'ice-breaker',
@@ -26,6 +30,7 @@ export const availableGames: GameDefinition[] = [
     gameNumber: '02',
     focus: 'Following challenges',
     detectionType: 'ACTION DETECTION',
+    supportedModes: ['SINGLE_PLAYER', 'TWO_PLAYERS'],
   },
   {
     id: 'reaction-rush',
@@ -35,5 +40,6 @@ export const availableGames: GameDefinition[] = [
     gameNumber: '03',
     focus: 'Speed',
     detectionType: 'REACTION DETECTION',
+    supportedModes: [],
   },
 ];

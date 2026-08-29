@@ -10,7 +10,7 @@ export default function StartGameScreen() {
   const navigate = useNavigate();
 
   const handleStart = () => {
-    navigate('/players');
+    navigate('/mode');
   };
 
   const containerVariants: Variants = {
@@ -221,9 +221,9 @@ export default function StartGameScreen() {
           variants={itemVariants}
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900 text-white border-2 border-slate-900 text-[10px] sm:text-xs font-display font-black tracking-wider uppercase shadow-chunky-sm"
         >
-          <span>2 Players</span>
+          <span>1 & 2 Players</span>
           <span className="w-1 h-1 rounded-full bg-white/50" />
-          <span>3 Games</span>
+          <span>Solo & Co-op</span>
         </motion.div>
       </motion.div>
 

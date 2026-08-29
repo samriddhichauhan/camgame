@@ -13,6 +13,7 @@ const p2Avatars = ['🐸', '🐙', '🐨', '🐼'];
 export default function PlayerSetupScreen() {
   const navigate = useNavigate();
   const {
+    gameMode,
     player1,
     player2,
     setPlayer1Name,
@@ -30,7 +31,7 @@ export default function PlayerSetupScreen() {
 
   const isP1Valid = player1.name.trim().length > 0 && player1.name.length <= 16;
   const isP2Valid = player2.name.trim().length > 0 && player2.name.length <= 16;
-  const canContinue = isP1Valid && isP2Valid;
+  const canContinue = gameMode === 'SINGLE_PLAYER' ? isP1Valid : (isP1Valid && isP2Valid);
 
   const headerVariants: Variants = {
     hidden: { opacity: 0, y: -20 },
@@ -79,7 +80,7 @@ export default function PlayerSetupScreen() {
         >
           <span className="absolute inset-0 w-full h-full bg-slate-950 rounded-xl translate-x-1 translate-y-1 group-active:translate-x-0.5 group-active:translate-y-0.5 transition-transform" />
           <button 
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/mode')}
             className="relative flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-slate-950 rounded-xl text-slate-800 font-display font-bold text-xs uppercase tracking-wider cursor-pointer group-hover:-translate-y-0.5 group-active:translate-y-0.5 transition-transform"
           >
             <ArrowLeft className="w-3.5 h-3.5 stroke-[3]" />
@@ -108,17 +109,19 @@ export default function PlayerSetupScreen() {
             variants={textItemVariants}
             className="font-display font-black text-3xl sm:text-5xl text-slate-900 tracking-tight leading-none uppercase mb-1 sm:mb-2"
           >
-            Who's Playing?
+            {gameMode === 'SINGLE_PLAYER' ? 'Player Setup' : "Who's Playing?"}
           </motion.h1>
           <motion.p 
             variants={textItemVariants}
             className="font-sans font-medium text-xs sm:text-base text-slate-500"
           >
-            Enter your names and get ready to compete.
+            {gameMode === 'SINGLE_PLAYER' 
+              ? 'Enter your name and pick your avatar to start playing.' 
+              : 'Enter your names and get ready to compete.'}
           </motion.p>
         </motion.div>
 
-        {/* Player Cards (Stack on mobile, Row on desktop) */}
+        {/* Player Cards */}
         <div className="w-full flex flex-col md:flex-row justify-center items-center gap-5 sm:gap-8 max-h-[58vh] md:max-h-[none] overflow-y-auto md:overflow-y-visible px-2 py-2">
           <PlayerSetupCard
             playerNumber={1}
@@ -130,15 +133,17 @@ export default function PlayerSetupScreen() {
             onChangeAvatar={setPlayer1Avatar}
           />
 
-          <PlayerSetupCard
-            playerNumber={2}
-            name={player2.name}
-            avatar={player2.avatar}
-            avatars={p2Avatars}
-            themeColor="coral"
-            onChangeName={setPlayer2Name}
-            onChangeAvatar={setPlayer2Avatar}
-          />
+          {gameMode === 'TWO_PLAYERS' && (
+            <PlayerSetupCard
+              playerNumber={2}
+              name={player2.name}
+              avatar={player2.avatar}
+              avatars={p2Avatars}
+              themeColor="coral"
+              onChangeName={setPlayer2Name}
+              onChangeAvatar={setPlayer2Avatar}
+            />
+          )}
         </div>
 
       </div>

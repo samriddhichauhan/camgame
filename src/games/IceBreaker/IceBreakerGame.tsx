@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
-import { ArrowLeft, ArrowRight, RefreshCw, Clock, AlertTriangle, Trophy, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Clock, AlertTriangle, Trophy, Sparkles, CheckCircle2, Award, Zap } from 'lucide-react';
 import { useGameSession } from '../../context/GameSessionContext';
 import ProgressIndicator from '../../components/ProgressIndicator';
 import PlayfulBackgroundShapes from '../../components/PlayfulBackgroundShapes';
@@ -23,13 +23,17 @@ import { getRandomChallenges } from './IceBreakerChallenges';
 import { detectIceBreakerAction } from './DetectIceBreakerAction';
 import type { PlayerBaseline } from './DetectIceBreakerAction';
 import { calculateIceBreakerScore } from './CalculateIceBreakerScore';
+import { getPersonalBest, savePersonalBest } from '../../utils/PersonalBestStorage';
 
 const ICE_BREAKER_ROUND_COUNT = 5;
 const CHALLENGE_DURATION_SECS = 5;
 
 export default function IceBreakerGame() {
   const navigate = useNavigate();
-  const { player1, player2 } = useGameSession();
+  const { gameMode, player1, player2 } = useGameSession();
+
+  const isSolo = gameMode === 'SINGLE_PLAYER';
+  const requiredPlayers = isSolo ? 1 : 2;
 
   // Stream & CV setup states
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -78,6 +82,7 @@ export default function IceBreakerGame() {
   // Aggregate results and scores
   const [roundStates, setRoundStates] = useState<IceBreakerRoundState[]>([]);
   const [scores, setScores] = useState<{ p1: number; p2: number }>({ p1: 0, p2: 0 });
+  const [isNewPb, setIsNewPb] = useState<boolean>(false);
 
   // Diagnostics refs to prevent console flood
   const lastLogTimeRef = useRef<number>(0);
@@ -171,7 +176,7 @@ export default function IceBreakerGame() {
           // Accumulate standing coordinates for baseline mapping
           if (p1) p1CalibrationSamplesRef.current.push(p1.bodyLandmarks);
           if (p2) p2CalibrationSamplesRef.current.push(p2.bodyLandmarks);
-        } else if (gameState === 'challenge-active' && currentChallenge && numPlayersDetected === 2) {
+        } else if (gameState === 'challenge-active' && currentChallenge && numPlayersDetected >= requiredPlayers) {
           // 1. Process Player 1
           if (p1 && !p1Done) {
             p1HistoryRef.current.push(p1.bodyLandmarks);
@@ -196,8 +201,8 @@ export default function IceBreakerGame() {
             }
           }
 
-          // 2. Process Player 2
-          if (p2 && !p2Done) {
+          // 2. Process Player 2 (multiplayer only)
+          if (!isSolo && p2 && !p2Done) {
             p2HistoryRef.current.push(p2.bodyLandmarks);
             if (p2HistoryRef.current.length > 30) p2HistoryRef.current.shift();
 
@@ -266,7 +271,7 @@ export default function IceBreakerGame() {
         animationFrameIdRef.current = null;
       }
     };
-  }, [cvStatus, gameState, currentChallenge, p1Baseline, p2Baseline, p1Done, p2Done]);
+  }, [cvStatus, gameState, currentChallenge, p1Baseline, p2Baseline, p1Done, p2Done, isSolo, requiredPlayers]);
 
   // Clean release on unmount
   useEffect(() => {
@@ -294,7 +299,7 @@ export default function IceBreakerGame() {
 
   // Timer Tick Interval Controller
   useEffect(() => {
-    if (cvStatus !== 'working' || players.length < 2) return;
+    if (cvStatus !== 'working' || players.length < requiredPlayers) return;
 
     const activeTimerStates: IceBreakerStatus[] = ['countdown', 'challenge-active'];
     if (!activeTimerStates.includes(gameState)) return;
@@ -310,14 +315,18 @@ export default function IceBreakerGame() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [cvStatus, gameState, players.length]);
+  }, [cvStatus, gameState, players.length, requiredPlayers]);
 
-  // Transition to round results if both complete early
+  // Transition to round results if player(s) complete early
   useEffect(() => {
-    if (gameState === 'challenge-active' && p1Done && p2Done) {
-      handleCompleteRound();
+    if (gameState === 'challenge-active') {
+      if (isSolo && p1Done) {
+        handleCompleteRound();
+      } else if (!isSolo && p1Done && p2Done) {
+        handleCompleteRound();
+      }
     }
-  }, [gameState, p1Done, p2Done]);
+  }, [gameState, p1Done, p2Done, isSolo]);
 
   // Standing Baseline calculator helper
   const computeBaseline = (samples: BodyLandmark[][]): PlayerBaseline | null => {
@@ -356,9 +365,12 @@ export default function IceBreakerGame() {
     if (gameState === 'countdown') {
       // Calibrate baselines at countdown end
       const baseP1 = computeBaseline(p1CalibrationSamplesRef.current);
-      const baseP2 = computeBaseline(p2CalibrationSamplesRef.current);
       setP1Baseline(baseP1);
-      setP2Baseline(baseP2);
+      
+      if (!isSolo) {
+        const baseP2 = computeBaseline(p2CalibrationSamplesRef.current);
+        setP2Baseline(baseP2);
+      }
 
       // Start Challenge phase
       setGameState('challenge-active');
@@ -381,23 +393,27 @@ export default function IceBreakerGame() {
   const handleCompleteRound = () => {
     // Determine winner and calculate scores
     const p1Score = calculateIceBreakerScore(p1Done ? p1ReactionTime : null);
-    const p2Score = calculateIceBreakerScore(p2Done ? p2ReactionTime : null);
+    const p2Score = isSolo ? 0 : calculateIceBreakerScore(p2Done ? p2ReactionTime : null);
 
     let roundWinner: 1 | 2 | 'draw' | null = null;
-    if (p1Done && p2Done) {
-      const diff = Math.abs((p1ReactionTime || 0) - (p2ReactionTime || 0));
-      // Tie tolerance of 150ms
-      if (diff < 150) {
-        roundWinner = 'draw';
+    if (!isSolo) {
+      if (p1Done && p2Done) {
+        const diff = Math.abs((p1ReactionTime || 0) - (p2ReactionTime || 0));
+        // Tie tolerance of 150ms
+        if (diff < 150) {
+          roundWinner = 'draw';
+        } else {
+          roundWinner = (p1ReactionTime || 0) < (p2ReactionTime || 0) ? 1 : 2;
+        }
+      } else if (p1Done) {
+        roundWinner = 1;
+      } else if (p2Done) {
+        roundWinner = 2;
       } else {
-        roundWinner = (p1ReactionTime || 0) < (p2ReactionTime || 0) ? 1 : 2;
+        roundWinner = 'draw';
       }
-    } else if (p1Done) {
-      roundWinner = 1;
-    } else if (p2Done) {
-      roundWinner = 2;
     } else {
-      roundWinner = 'draw';
+      roundWinner = p1Done ? 1 : null;
     }
 
     const p1Result: PlayerRoundResult = {
@@ -436,6 +452,10 @@ export default function IceBreakerGame() {
       setCurrentRound(prev => prev + 1);
       setGameState('round-intro');
     } else {
+      if (isSolo) {
+        const updated = savePersonalBest('ice-breaker', scores.p1);
+        setIsNewPb(updated);
+      }
       setGameState('game-over');
     }
   };
@@ -449,6 +469,7 @@ export default function IceBreakerGame() {
     setScores({ p1: 0, p2: 0 });
     setRoundStates([]);
     setCurrentRound(1);
+    setIsNewPb(false);
     setRoundsChallenges(getRandomChallenges(ICE_BREAKER_ROUND_COUNT));
     setGameState('intro');
   };
@@ -528,7 +549,7 @@ export default function IceBreakerGame() {
 
         <div className="flex flex-col items-center">
           <div className="font-display font-black text-lg text-slate-950 uppercase tracking-wide">
-            Ice Breaker
+            Ice Breaker {isSolo && <span className="text-brand-purple text-xs font-mono font-bold ml-1">(SOLO)</span>}
           </div>
           {gameState !== 'intro' && gameState !== 'game-over' && (
             <div className="px-3 py-0.5 rounded-full bg-brand-purple/10 border border-brand-purple/20 text-[10px] font-mono font-black text-brand-purple uppercase">
@@ -541,7 +562,7 @@ export default function IceBreakerGame() {
       </div>
 
       {/* Safety Pause warning overlay */}
-      {gameState !== 'intro' && gameState !== 'round-result' && gameState !== 'game-over' && players.length < 2 && (
+      {gameState !== 'intro' && gameState !== 'round-result' && gameState !== 'game-over' && players.length < requiredPlayers && (
         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 animate-fade">
           <div className="flex flex-col items-center text-center p-8 bg-white border-[3px] border-slate-950 rounded-3xl shadow-chunky max-w-sm m-4">
             <div className="w-14 h-14 rounded-2xl bg-brand-yellow border-2 border-slate-950 flex items-center justify-center text-slate-950 mb-4 shadow-chunky-sm animate-bounce">
@@ -551,7 +572,9 @@ export default function IceBreakerGame() {
               Step Into The Frame
             </h3>
             <p className="font-sans text-xs text-slate-500 font-semibold leading-relaxed">
-              We need both players fully visible in the camera to continue the physical challenges!
+              {isSolo 
+                ? 'We need you visible in the camera frame to complete the physical challenges!' 
+                : 'We need both players fully visible in the camera to continue the physical challenges!'}
             </p>
           </div>
         </div>
@@ -574,10 +597,12 @@ export default function IceBreakerGame() {
                 <Sparkles className="w-7 h-7" />
               </div>
               <h2 className="font-display font-black text-3xl sm:text-4xl text-slate-950 uppercase mb-2">
-                Ice Breaker
+                Ice Breaker {isSolo ? 'Solo' : ''}
               </h2>
               <p className="font-sans text-xs sm:text-sm text-slate-550 leading-relaxed font-semibold mb-8">
-                A high-speed physical challenge game! React to the sudden coordinates request card as fast as you can. Points are awarded based on speed and accuracy.
+                {isSolo 
+                  ? 'High-speed physical action challenges against the clock! 5 rounds of motion challenges. Score maximum points by reacting fast!'
+                  : 'A high-speed physical challenge game! React to the sudden coordinates request card as fast as you can. Points are awarded based on speed and accuracy.'}
               </p>
               
               <div className="relative group w-full max-w-[200px]">
@@ -609,7 +634,9 @@ export default function IceBreakerGame() {
                 Stand Ready!
               </h2>
               <p className="font-sans text-xs text-slate-500 font-semibold mb-8 px-2">
-                Make sure you are both standing clearly in the camera field. We will calibrate your height during the countdown.
+                {isSolo 
+                  ? 'Make sure you are standing clearly in the camera field. We will calibrate your height during the countdown.'
+                  : 'Make sure you are both standing clearly in the camera field. We will calibrate your height during the countdown.'}
               </p>
 
               <div className="relative group w-full max-w-[180px]">
@@ -680,54 +707,97 @@ export default function IceBreakerGame() {
                 </p>
               </div>
 
-              {/* Side-by-side feed and indicator panel */}
-              <div className="w-full grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
-                
-                {/* Left: Player 1 Indicator */}
-                <div className="md:col-span-1 flex flex-col items-center text-center p-4 border-2 border-slate-950 bg-white rounded-2xl shadow-chunky-sm">
-                  <span className="text-[10px] font-display font-black text-brand-purple uppercase tracking-wider">Player 1</span>
-                  <span className="font-display font-black text-sm text-slate-800 uppercase mt-0.5 max-w-[80px] truncate">{player1.name}</span>
-                  <div className="mt-4 flex items-center justify-center">
-                    {p1Done ? (
-                      <div className="flex flex-col items-center text-green-500 animate-pulse">
-                        <CheckCircle2 className="w-8 h-8 fill-green-150 stroke-[2.5]" />
-                        <span className="font-display font-black text-xs uppercase mt-1">{(p1ReactionTime! / 1000).toFixed(2)}s</span>
+              {isSolo ? (
+                <div className="w-full flex flex-col items-center gap-4 max-w-md">
+                  {/* Solo Central Live Camera Viewport */}
+                  <div className="relative w-full aspect-[4/3] rounded-3xl overflow-hidden border-[3px] border-slate-950 shadow-chunky bg-slate-950">
+                    <CameraPreview stream={stream} />
+                    <DetectedPlayerOverlay players={players} />
+
+                    {/* Timer display */}
+                    <div className="absolute top-3 left-3 bg-slate-900/80 border border-slate-700 text-brand-yellow font-display font-black text-sm px-3 py-1 rounded-full flex items-center gap-1.5 tracking-wider shadow z-20">
+                      <Clock className="w-4 h-4 text-brand-yellow animate-pulse" />
+                      <span>0:0{countdown}</span>
+                    </div>
+                  </div>
+
+                  {/* Solo Player Status Bar */}
+                  <div className="w-full flex items-center justify-between p-4 border-2 border-slate-950 bg-white rounded-2xl shadow-chunky-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-brand-purple/10 border border-brand-purple/20 flex items-center justify-center text-brand-purple">
+                        <Zap className="w-5 h-5" />
                       </div>
-                    ) : (
-                      <div className="w-8 h-8 rounded-full border-4 border-slate-200 border-t-brand-purple animate-spin" />
-                    )}
-                  </div>
-                </div>
-
-                {/* Center: Live Camera Feed */}
-                <div className="md:col-span-3 relative w-full aspect-[4/3] rounded-3xl overflow-hidden border-[3px] border-slate-950 shadow-chunky bg-slate-950">
-                  <CameraPreview stream={stream} />
-                  <DetectedPlayerOverlay players={players} />
-
-                  {/* Timer display */}
-                  <div className="absolute top-3 left-3 bg-slate-900/80 border border-slate-700 text-brand-yellow font-display font-black text-sm px-3 py-1 rounded-full flex items-center gap-1.5 tracking-wider shadow z-20">
-                    <Clock className="w-4 h-4 text-brand-yellow animate-pulse" />
-                    <span>0:0{countdown}</span>
-                  </div>
-                </div>
-
-                {/* Right: Player 2 Indicator */}
-                <div className="md:col-span-1 flex flex-col items-center text-center p-4 border-2 border-slate-950 bg-white rounded-2xl shadow-chunky-sm">
-                  <span className="text-[10px] font-display font-black text-brand-coral uppercase tracking-wider">Player 2</span>
-                  <span className="font-display font-black text-sm text-slate-800 uppercase mt-0.5 max-w-[80px] truncate">{player2.name}</span>
-                  <div className="mt-4 flex items-center justify-center">
-                    {p2Done ? (
-                      <div className="flex flex-col items-center text-green-500 animate-pulse">
-                        <CheckCircle2 className="w-8 h-8 fill-green-150 stroke-[2.5]" />
-                        <span className="font-display font-black text-xs uppercase mt-1">{(p2ReactionTime! / 1000).toFixed(2)}s</span>
+                      <div className="flex flex-col text-left">
+                        <span className="text-[10px] font-display font-black text-brand-purple uppercase tracking-wider">PLAYER</span>
+                        <span className="font-display font-black text-base text-slate-800 uppercase">{player1.name}</span>
                       </div>
-                    ) : (
-                      <div className="w-8 h-8 rounded-full border-4 border-slate-200 border-t-brand-coral animate-spin" />
-                    )}
+                    </div>
+
+                    <div>
+                      {p1Done ? (
+                        <div className="flex items-center gap-2 text-green-500 animate-bounce">
+                          <CheckCircle2 className="w-7 h-7 fill-green-150 stroke-[2.5]" />
+                          <span className="font-display font-black text-base uppercase">{(p1ReactionTime! / 1000).toFixed(2)}s</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <div className="w-6 h-6 rounded-full border-3 border-slate-200 border-t-brand-purple animate-spin" />
+                          <span className="text-xs font-mono font-bold uppercase tracking-wider">DO ACTION!</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
+              ) : (
+                /* Two Player Side-by-side panel */
+                <div className="w-full grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
+                  
+                  {/* Left: Player 1 Indicator */}
+                  <div className="md:col-span-1 flex flex-col items-center text-center p-4 border-2 border-slate-950 bg-white rounded-2xl shadow-chunky-sm">
+                    <span className="text-[10px] font-display font-black text-brand-purple uppercase tracking-wider">Player 1</span>
+                    <span className="font-display font-black text-sm text-slate-800 uppercase mt-0.5 max-w-[80px] truncate">{player1.name}</span>
+                    <div className="mt-4 flex items-center justify-center">
+                      {p1Done ? (
+                        <div className="flex flex-col items-center text-green-500 animate-pulse">
+                          <CheckCircle2 className="w-8 h-8 fill-green-150 stroke-[2.5]" />
+                          <span className="font-display font-black text-xs uppercase mt-1">{(p1ReactionTime! / 1000).toFixed(2)}s</span>
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded-full border-4 border-slate-200 border-t-brand-purple animate-spin" />
+                      )}
+                    </div>
+                  </div>
 
-              </div>
+                  {/* Center: Live Camera Feed */}
+                  <div className="md:col-span-3 relative w-full aspect-[4/3] rounded-3xl overflow-hidden border-[3px] border-slate-950 shadow-chunky bg-slate-950">
+                    <CameraPreview stream={stream} />
+                    <DetectedPlayerOverlay players={players} />
+
+                    {/* Timer display */}
+                    <div className="absolute top-3 left-3 bg-slate-900/80 border border-slate-700 text-brand-yellow font-display font-black text-sm px-3 py-1 rounded-full flex items-center gap-1.5 tracking-wider shadow z-20">
+                      <Clock className="w-4 h-4 text-brand-yellow animate-pulse" />
+                      <span>0:0{countdown}</span>
+                    </div>
+                  </div>
+
+                  {/* Right: Player 2 Indicator */}
+                  <div className="md:col-span-1 flex flex-col items-center text-center p-4 border-2 border-slate-950 bg-white rounded-2xl shadow-chunky-sm">
+                    <span className="text-[10px] font-display font-black text-brand-coral uppercase tracking-wider">Player 2</span>
+                    <span className="font-display font-black text-sm text-slate-800 uppercase mt-0.5 max-w-[80px] truncate">{player2.name}</span>
+                    <div className="mt-4 flex items-center justify-center">
+                      {p2Done ? (
+                        <div className="flex flex-col items-center text-green-500 animate-pulse">
+                          <CheckCircle2 className="w-8 h-8 fill-green-150 stroke-[2.5]" />
+                          <span className="font-display font-black text-xs uppercase mt-1">{(p2ReactionTime! / 1000).toFixed(2)}s</span>
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded-full border-4 border-slate-200 border-t-brand-coral animate-spin" />
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -745,44 +815,63 @@ export default function IceBreakerGame() {
                 Round {currentRound} Results
               </span>
 
-              {/* Mapped results text */}
-              <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-2">
-                {roundStates[currentRound - 1].winner === 'draw' 
-                  ? "It's a Draw!" 
-                  : roundStates[currentRound - 1].winner === 1 
-                    ? `${player1.name} Wins!` 
-                    : `${player2.name} Wins!`}
-              </h2>
+              {isSolo ? (
+                <>
+                  <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-2">
+                    {roundStates[currentRound - 1].player1Result.completed ? 'Challenge Passed!' : 'Time Up!'}
+                  </h2>
 
-              <div className="w-full flex justify-around items-center my-6 bg-slate-50 p-4 border border-slate-200 rounded-2xl">
-                {/* P1 round state */}
-                <div>
-                  <div className="text-[10px] font-display font-black text-brand-purple uppercase tracking-wider">{player1.name}</div>
-                  <div className="font-display font-black text-xl text-slate-800 mt-1">
-                    {roundStates[currentRound - 1].player1Result.completed 
-                      ? `${(roundStates[currentRound - 1].player1Result.reactionTime! / 1000).toFixed(2)}s` 
-                      : 'FAIL'}
+                  <div className="flex flex-col items-center my-6 bg-slate-50 p-6 border-2 border-slate-950 rounded-2xl w-full shadow-chunky-sm">
+                    <span className="text-[10px] font-display font-black text-brand-purple uppercase tracking-wider">Reaction Speed</span>
+                    <span className="font-display font-black text-5xl text-slate-900 mt-1">
+                      {roundStates[currentRound - 1].player1Result.completed 
+                        ? `${(roundStates[currentRound - 1].player1Result.reactionTime! / 1000).toFixed(2)}s` 
+                        : 'MISSED'}
+                    </span>
+                    <span className="px-3 py-1 bg-brand-purple text-white font-mono font-black text-xs uppercase rounded-full mt-3">
+                      +{roundStates[currentRound - 1].player1Result.score} points
+                    </span>
                   </div>
-                  <div className="text-[9px] font-mono text-slate-400 mt-1 uppercase font-bold">
-                    +{roundStates[currentRound - 1].player1Result.score} pts
-                  </div>
-                </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-2">
+                    {roundStates[currentRound - 1].winner === 'draw' 
+                      ? "It's a Draw!" 
+                      : roundStates[currentRound - 1].winner === 1 
+                        ? `${player1.name} Wins!` 
+                        : `${player2.name} Wins!`}
+                  </h2>
 
-                <div className="h-8 w-[2px] bg-slate-200" />
+                  <div className="w-full flex justify-around items-center my-6 bg-slate-50 p-4 border border-slate-200 rounded-2xl">
+                    <div>
+                      <div className="text-[10px] font-display font-black text-brand-purple uppercase tracking-wider">{player1.name}</div>
+                      <div className="font-display font-black text-xl text-slate-800 mt-1">
+                        {roundStates[currentRound - 1].player1Result.completed 
+                          ? `${(roundStates[currentRound - 1].player1Result.reactionTime! / 1000).toFixed(2)}s` 
+                          : 'FAIL'}
+                      </div>
+                      <div className="text-[9px] font-mono text-slate-400 mt-1 uppercase font-bold">
+                        +{roundStates[currentRound - 1].player1Result.score} pts
+                      </div>
+                    </div>
 
-                {/* P2 round state */}
-                <div>
-                  <div className="text-[10px] font-display font-black text-brand-coral uppercase tracking-wider">{player2.name}</div>
-                  <div className="font-display font-black text-xl text-slate-800 mt-1">
-                    {roundStates[currentRound - 1].player2Result.completed 
-                      ? `${(roundStates[currentRound - 1].player2Result.reactionTime! / 1000).toFixed(2)}s` 
-                      : 'FAIL'}
+                    <div className="h-8 w-[2px] bg-slate-200" />
+
+                    <div>
+                      <div className="text-[10px] font-display font-black text-brand-coral uppercase tracking-wider">{player2.name}</div>
+                      <div className="font-display font-black text-xl text-slate-800 mt-1">
+                        {roundStates[currentRound - 1].player2Result.completed 
+                          ? `${(roundStates[currentRound - 1].player2Result.reactionTime! / 1000).toFixed(2)}s` 
+                          : 'FAIL'}
+                      </div>
+                      <div className="text-[9px] font-mono text-slate-400 mt-1 uppercase font-bold">
+                        +{roundStates[currentRound - 1].player2Result.score} pts
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[9px] font-mono text-slate-400 mt-1 uppercase font-bold">
-                    +{roundStates[currentRound - 1].player2Result.score} pts
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
 
               {/* Details banner */}
               <div className="px-4 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-mono font-black text-slate-650 uppercase mb-8">
@@ -817,44 +906,74 @@ export default function IceBreakerGame() {
                 <Trophy className="w-7 h-7 stroke-[2.5]" />
               </div>
 
-              <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-6">
+              <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-2">
                 Ice Breaker Complete
               </h2>
+              <p className="font-display font-black text-base text-brand-purple uppercase tracking-wider mb-6">
+                {player1.name}
+              </p>
 
-              <div className="w-full flex flex-col gap-3 mb-8">
-                {/* P1 total points */}
-                <div className="flex justify-between items-center p-3 border-2 border-slate-950 rounded-2xl bg-slate-50">
-                  <div className="flex flex-col text-left">
-                    <span className="text-[10px] font-display font-black text-brand-purple uppercase tracking-wider">Player 1</span>
-                    <span className="font-display font-black text-base text-slate-800 uppercase mt-0.5">{player1.name}</span>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">Total Score</span>
-                    <span className="font-display font-black text-xl text-slate-900 mt-0.5">{scores.p1} pts</span>
-                  </div>
-                </div>
+              {isSolo ? (
+                <>
+                  {/* Solo Final Score Card */}
+                  <div className="w-full bg-slate-50 border-2 border-slate-950 p-5 rounded-2xl mb-6 flex flex-col items-center shadow-chunky-sm">
+                    <span className="text-slate-400 font-display font-bold text-xs uppercase tracking-wider">Total Score</span>
+                    <span className="font-display font-black text-6xl text-brand-purple mt-1">{scores.p1} pts</span>
+                    
+                    {isNewPb && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-yellow text-slate-950 border border-slate-950 text-[10px] font-mono font-black rounded-full uppercase mt-3 animate-bounce">
+                        <Award className="w-3.5 h-3.5" />
+                        <span>NEW PERSONAL BEST!</span>
+                      </div>
+                    )}
 
-                {/* P2 total points */}
-                <div className="flex justify-between items-center p-3 border-2 border-slate-950 rounded-2xl bg-slate-50">
-                  <div className="flex flex-col text-left">
-                    <span className="text-[10px] font-display font-black text-brand-coral uppercase tracking-wider">Player 2</span>
-                    <span className="font-display font-black text-base text-slate-800 uppercase mt-0.5">{player2.name}</span>
+                    {getPersonalBest('ice-breaker') && !isNewPb && (
+                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase mt-2">
+                        Personal Best: {getPersonalBest('ice-breaker')?.score} pts
+                      </span>
+                    )}
                   </div>
-                  <div className="flex flex-col items-end">
-                    <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">Total Score</span>
-                    <span className="font-display font-black text-xl text-slate-900 mt-0.5">{scores.p2} pts</span>
-                  </div>
-                </div>
-              </div>
 
-              {/* Winner Header Banner */}
-              <div className="px-6 py-3 border-2 border-slate-950 rounded-2xl bg-brand-yellow font-display font-black text-xl uppercase tracking-widest shadow-chunky-sm mb-8">
-                {scores.p1 === scores.p2 
-                  ? "It's a Tie!" 
-                  : scores.p1 > scores.p2 
-                    ? `WINNER: ${player1.name}` 
-                    : `WINNER: ${player2.name}`}
-              </div>
+                  {/* Outcome Banner */}
+                  <div className="w-full px-6 py-3 border-2 border-slate-950 rounded-2xl bg-brand-yellow font-display font-black text-lg uppercase tracking-widest shadow-chunky-sm mb-8">
+                    {scores.p1 >= 400 ? 'LIGHTNING REFLEXES!' : scores.p1 >= 250 ? 'GREAT SPEED & AGILITY!' : 'KEEP PRACTICING!'}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-full flex flex-col gap-3 mb-8">
+                    <div className="flex justify-between items-center p-3 border-2 border-slate-950 rounded-2xl bg-slate-50">
+                      <div className="flex flex-col text-left">
+                        <span className="text-[10px] font-display font-black text-brand-purple uppercase tracking-wider">Player 1</span>
+                        <span className="font-display font-black text-base text-slate-800 uppercase mt-0.5">{player1.name}</span>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">Total Score</span>
+                        <span className="font-display font-black text-xl text-slate-900 mt-0.5">{scores.p1} pts</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center p-3 border-2 border-slate-950 rounded-2xl bg-slate-50">
+                      <div className="flex flex-col text-left">
+                        <span className="text-[10px] font-display font-black text-brand-coral uppercase tracking-wider">Player 2</span>
+                        <span className="font-display font-black text-base text-slate-800 uppercase mt-0.5">{player2.name}</span>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">Total Score</span>
+                        <span className="font-display font-black text-xl text-slate-900 mt-0.5">{scores.p2} pts</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-6 py-3 border-2 border-slate-950 rounded-2xl bg-brand-yellow font-display font-black text-xl uppercase tracking-widest shadow-chunky-sm mb-8">
+                    {scores.p1 === scores.p2 
+                      ? "It's a Tie!" 
+                      : scores.p1 > scores.p2 
+                        ? `WINNER: ${player1.name}` 
+                        : `WINNER: ${player2.name}`}
+                  </div>
+                </>
+              )}
 
               {/* Restart Button */}
               <div className="relative group w-full max-w-[180px]">

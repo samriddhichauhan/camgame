@@ -1,6 +1,8 @@
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
+export type GameMode = 'SINGLE_PLAYER' | 'TWO_PLAYERS';
+
 export interface Player {
   name: string;
   avatar: string;
@@ -8,6 +10,8 @@ export interface Player {
 }
 
 export interface GameSessionContextType {
+  gameMode: GameMode;
+  setGameMode: (mode: GameMode) => void;
   player1: Player;
   player2: Player;
   selectedGameId: string | null;
@@ -26,6 +30,7 @@ const defaultPlayer2: Player = { name: '', avatar: '🐸', color: 'bg-brand-cora
 const GameSessionContext = createContext<GameSessionContextType | undefined>(undefined);
 
 export function GameSessionProvider({ children }: { children: ReactNode }) {
+  const [gameMode, setGameMode] = useState<GameMode>('TWO_PLAYERS');
   const [player1, setPlayer1] = useState<Player>(defaultPlayer1);
   const [player2, setPlayer2] = useState<Player>(defaultPlayer2);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
@@ -37,6 +42,9 @@ export function GameSessionProvider({ children }: { children: ReactNode }) {
   const setPlayer2Avatar = (avatar: string) => setPlayer2((prev) => ({ ...prev, avatar }));
 
   const isSessionReady = () => {
+    if (gameMode === 'SINGLE_PLAYER') {
+      return player1.name.trim() !== '';
+    }
     return player1.name.trim() !== '' && player2.name.trim() !== '';
   };
 
@@ -49,6 +57,8 @@ export function GameSessionProvider({ children }: { children: ReactNode }) {
   return (
     <GameSessionContext.Provider
       value={{
+        gameMode,
+        setGameMode,
         player1,
         player2,
         selectedGameId,

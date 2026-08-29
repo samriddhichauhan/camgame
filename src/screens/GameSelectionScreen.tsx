@@ -11,6 +11,7 @@ import PlayfulBackgroundShapes from '../components/PlayfulBackgroundShapes';
 export default function GameSelectionScreen() {
   const navigate = useNavigate();
   const {
+    gameMode,
     player1,
     player2,
     selectedGameId,
@@ -23,7 +24,9 @@ export default function GameSelectionScreen() {
     return <Navigate to="/players" replace />;
   }
 
-  const selectedGame = availableGames.find((g) => g.id === selectedGameId);
+  // Filter available games based on current mode
+  const filteredGames = availableGames.filter((g) => g.supportedModes.includes(gameMode));
+  const selectedGame = filteredGames.find((g) => g.id === selectedGameId);
 
   const handleContinue = () => {
     if (selectedGameId) {
@@ -119,9 +122,18 @@ export default function GameSelectionScreen() {
             variants={textItemVariants}
             className="inline-flex items-center gap-3 px-5 py-2 mb-2 bg-white border-2 border-slate-950 rounded-2xl shadow-chunky-sm text-xs sm:text-sm font-display font-black tracking-widest uppercase"
           >
-            <span className="text-slate-700">{player1.name}</span>
-            <span className="px-2 py-0.5 rounded bg-brand-coral border border-slate-950 text-white text-[9px] sm:text-[10px] scale-95">VS</span>
-            <span className="text-slate-700">{player2.name}</span>
+            {gameMode === 'SINGLE_PLAYER' ? (
+              <>
+                <span className="px-2 py-0.5 rounded bg-brand-purple border border-slate-950 text-white text-[9px] sm:text-[10px]">SOLO PLAY</span>
+                <span className="text-slate-700">{player1.name}</span>
+              </>
+            ) : (
+              <>
+                <span className="text-slate-700">{player1.name}</span>
+                <span className="px-2 py-0.5 rounded bg-brand-coral border border-slate-950 text-white text-[9px] sm:text-[10px] scale-95">VS</span>
+                <span className="text-slate-700">{player2.name}</span>
+              </>
+            )}
           </motion.div>
 
           <motion.h1 
@@ -138,14 +150,14 @@ export default function GameSelectionScreen() {
           </motion.p>
         </motion.div>
 
-        {/* Game cards (Stack on mobile, Row on desktop) */}
+        {/* Game cards */}
         <motion.div
           variants={cardsContainerVariants}
           initial="hidden"
           animate="visible"
           className="w-full flex flex-col md:flex-row justify-center items-center gap-5 sm:gap-6 max-h-[50vh] md:max-h-[none] overflow-y-auto md:overflow-y-visible px-2 py-2"
         >
-          {availableGames.map((game) => (
+          {filteredGames.map((game) => (
             <GameSelectionCard
               key={game.id}
               game={game}
