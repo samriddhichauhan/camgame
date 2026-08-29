@@ -2,21 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
-import { ArrowLeft, ArrowRight, RefreshCw, Clock, AlertTriangle, Trophy, Sparkles, CheckCircle2, Award, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Clock, AlertTriangle, Trophy, Sparkles, CheckCircle2, Award, Zap, Volume2, VolumeX, Home, Grid } from 'lucide-react';
 import { useGameSession } from '../../context/GameSessionContext';
 import ProgressIndicator from '../../components/ProgressIndicator';
 import PlayfulBackgroundShapes from '../../components/PlayfulBackgroundShapes';
 import CameraPreview from '../../components/CameraPreview';
 import DetectedPlayerOverlay from '../../components/DetectedPlayerOverlay';
-import { startCameraStream } from '../../camera/StartCameraStream';
-import { stopCameraStream } from '../../camera/StopCameraStream';
-import { initializePoseDetection } from '../../computer-vision/InitializePoseDetection';
-import { initializeHandDetection } from '../../computer-vision/InitializeHandDetection';
-import { detectBodyPose } from '../../computer-vision/DetectBodyPose';
-import { detectHandLandmarks } from '../../computer-vision/DetectHandLandmarks';
-import { detectPlayers } from '../../computer-vision/DetectPlayers';
-import type { DetectedPlayer, BodyLandmark } from '../../computer-vision/ComputerVisionTypes';
-import type { PoseLandmarker, HandLandmarker } from '@mediapipe/tasks-vision';
+import { visionEngine } from '../../vision/VisionEngine';
+import { useVisionSystem, useVisionFrameSubscription } from '../../vision/useVisionEngine';
+import VisionDebugOverlay from '../../vision/debug/VisionDebugOverlay';
+import type { TrackedPlayer, BodyLandmark } from '../../vision/types/VisionTypes';
+import { soundFx } from '../../utils/SoundEffects';
 
 import type { IceBreakerStatus, IceBreakerChallenge, IceBreakerRoundState, PlayerRoundResult } from './IceBreakerGameTypes';
 import { getRandomChallenges } from './IceBreakerChallenges';
@@ -33,19 +29,13 @@ export default function IceBreakerGame() {
   const { gameMode, player1, player2 } = useGameSession();
 
   const isSolo = gameMode === 'SINGLE_PLAYER';
-  const requiredPlayers = isSolo ? 1 : 2;
+  const requiredPlayers: 1 | 2 = isSolo ? 1 : 2;
 
-  // Stream & CV setup states
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [cvStatus, setCvStatus] = useState<'initializing' | 'loading-vision' | 'working' | 'error'>('initializing');
-  const [players, setPlayers] = useState<DetectedPlayer[]>([]);
-
-  // Refs for tracking background task instances
-  const poseLandmarkerRef = useRef<PoseLandmarker | null>(null);
-  const handLandmarkerRef = useRef<HandLandmarker | null>(null);
-  const loopActiveRef = useRef<boolean>(false);
-  const animationFrameIdRef = useRef<number | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  // Shared vision engine — camera + person detection + pose + tracking all
+  // live outside this component. This screen only consumes the player API.
+  const { stream, starting, error, retry } = useVisionSystem(requiredPlayers, player2.name);
+  const cvStatus: 'initializing' | 'working' | 'error' = error ? 'error' : starting ? 'initializing' : 'working';
+  const [players, setPlayers] = useState<TrackedPlayer[]>([]);
 
   // Game state
   const [gameState, setGameState] = useState<IceBreakerStatus>('intro');
@@ -84,218 +74,83 @@ export default function IceBreakerGame() {
   const [scores, setScores] = useState<{ p1: number; p2: number }>({ p1: 0, p2: 0 });
   const [isNewPb, setIsNewPb] = useState<boolean>(false);
 
-  // Diagnostics refs to prevent console flood
-  const lastLogTimeRef = useRef<number>(0);
-  const lastPlayerCountRef = useRef<number>(-1);
+  // Consume the shared vision engine's per-frame output. Camera + person
+  // detection + pose + tracking all happen outside this component.
+  useVisionFrameSubscription(
+    (frame) => {
+      setPlayers(frame.players);
 
-  // Initialize camera and MediaPipe
-  const handleStartCameraAndVision = async () => {
-    setCvStatus('initializing');
-    let activeStream: MediaStream | null = null;
-    try {
-      activeStream = await startCameraStream();
-      setStream(activeStream);
-      streamRef.current = activeStream;
+      const p1 = frame.players.find((p) => p.playerIndex === 1);
+      const p2 = frame.players.find((p) => p.playerIndex === 2);
 
-      setCvStatus('loading-vision');
+      if (gameState === 'countdown' && countdown <= 2) {
+        // Accumulate standing coordinates for baseline mapping
+        if (p1) p1CalibrationSamplesRef.current.push(p1.bodyLandmarks);
+        if (p2) p2CalibrationSamplesRef.current.push(p2.bodyLandmarks);
+      } else if (gameState === 'challenge-active' && currentChallenge && frame.players.length >= requiredPlayers) {
+        // 1. Process Player 1
+        if (p1 && !p1Done) {
+          p1HistoryRef.current.push(p1.bodyLandmarks);
+          if (p1HistoryRef.current.length > 30) p1HistoryRef.current.shift();
 
-      if (!poseLandmarkerRef.current) {
-        poseLandmarkerRef.current = await initializePoseDetection();
-      }
-      if (!handLandmarkerRef.current) {
-        handLandmarkerRef.current = await initializeHandDetection();
-      }
+          const isP1ActionMatch = detectIceBreakerAction(
+            currentChallenge.detectorKey,
+            p1.bodyLandmarks,
+            p1Baseline,
+            p1HistoryRef.current
+          );
 
-      setCvStatus('working');
-    } catch (err) {
-      console.error('IceBreaker vision error:', err);
-      if (activeStream) {
-        stopCameraStream(activeStream);
-        setStream(null);
-        streamRef.current = null;
-      }
-      setCvStatus('error');
-    }
-  };
-
-  // Real-time computer vision frame detection loop
-  useEffect(() => {
-    const runDetection = () => {
-      const videoElement = document.getElementById('vybe-webcam-video') as HTMLVideoElement | null;
-      const poseLandmarker = poseLandmarkerRef.current;
-      const handLandmarker = handLandmarkerRef.current;
-
-      const isVideoReady = videoElement && videoElement.readyState >= 2 && videoElement.videoWidth > 0 && videoElement.videoHeight > 0;
-      const isVisionReady = !!(poseLandmarker && handLandmarker);
-
-      if (isVideoReady && isVisionReady && videoElement && poseLandmarker && handLandmarker) {
-        const timestamp = performance.now();
-        const poseResult = detectBodyPose(poseLandmarker, videoElement, timestamp);
-        const handResult = detectHandLandmarks(handLandmarker, videoElement, timestamp);
-        const detectedPlayers = detectPlayers(poseResult, handResult);
-        
-        setPlayers(detectedPlayers);
-
-        const numPosesDetected = poseResult?.landmarks ? poseResult.landmarks.length : 0;
-        const numPlayersDetected = detectedPlayers.length;
-
-        // Update Diagnostics DOM
-        const elVision = document.getElementById('diag-vision');
-        const elVideo = document.getElementById('diag-video');
-        const elSize = document.getElementById('diag-size');
-        const elPoses = document.getElementById('diag-poses');
-        const elPlayers = document.getElementById('diag-players');
-        const elLoop = document.getElementById('diag-loop');
-
-        if (elVision) elVision.innerText = 'READY';
-        if (elVideo) {
-          elVideo.innerText = 'READY';
-          elVideo.className = 'text-green-400 font-bold';
-        }
-        if (elSize) elSize.innerText = `${videoElement.videoWidth}x${videoElement.videoHeight}`;
-        if (elPoses) elPoses.innerText = String(numPosesDetected);
-        if (elPlayers) elPlayers.innerText = String(numPlayersDetected);
-        if (elLoop) {
-          elLoop.innerText = 'RUNNING';
-          elLoop.className = 'text-green-400 font-bold';
-        }
-
-        // Throttled Console Log
-        const now = performance.now();
-        if (now - lastLogTimeRef.current > 2000 || numPlayersDetected !== lastPlayerCountRef.current) {
-          console.log(`[IceBreaker Game] MediaPipe raw poses: ${numPosesDetected}, players mapped: ${numPlayersDetected}`);
-          lastLogTimeRef.current = now;
-          lastPlayerCountRef.current = numPlayersDetected;
-        }
-
-        // Perform active calibrations or gesture checks
-        const p1 = detectedPlayers.find((p) => p.playerIndex === 1);
-        const p2 = detectedPlayers.find((p) => p.playerIndex === 2);
-
-        if (gameState === 'countdown' && countdown <= 2) {
-          // Accumulate standing coordinates for baseline mapping
-          if (p1) p1CalibrationSamplesRef.current.push(p1.bodyLandmarks);
-          if (p2) p2CalibrationSamplesRef.current.push(p2.bodyLandmarks);
-        } else if (gameState === 'challenge-active' && currentChallenge && numPlayersDetected >= requiredPlayers) {
-          // 1. Process Player 1
-          if (p1 && !p1Done) {
-            p1HistoryRef.current.push(p1.bodyLandmarks);
-            if (p1HistoryRef.current.length > 30) p1HistoryRef.current.shift();
-
-            const isP1ActionMatch = detectIceBreakerAction(
-              currentChallenge.detectorKey,
-              p1.bodyLandmarks,
-              p1Baseline,
-              p1HistoryRef.current
-            );
-
-            if (isP1ActionMatch) {
-              p1ConfirmRef.current++;
-              if (p1ConfirmRef.current >= 5) {
-                setP1Done(true);
-                const reaction = Math.round(performance.now() - challengeStartTimeRef.current);
-                setP1ReactionTime(reaction);
-              }
-            } else {
-              p1ConfirmRef.current = 0;
+          if (isP1ActionMatch) {
+            p1ConfirmRef.current++;
+            if (p1ConfirmRef.current >= 5) {
+              setP1Done(true);
+              const reaction = Math.round(performance.now() - challengeStartTimeRef.current);
+              setP1ReactionTime(reaction);
             }
-          }
-
-          // 2. Process Player 2 (multiplayer only)
-          if (!isSolo && p2 && !p2Done) {
-            p2HistoryRef.current.push(p2.bodyLandmarks);
-            if (p2HistoryRef.current.length > 30) p2HistoryRef.current.shift();
-
-            const isP2ActionMatch = detectIceBreakerAction(
-              currentChallenge.detectorKey,
-              p2.bodyLandmarks,
-              p2Baseline,
-              p2HistoryRef.current
-            );
-
-            if (isP2ActionMatch) {
-              p2ConfirmRef.current++;
-              if (p2ConfirmRef.current >= 5) {
-                setP2Done(true);
-                const reaction = Math.round(performance.now() - challengeStartTimeRef.current);
-                setP2ReactionTime(reaction);
-              }
-            } else {
-              p2ConfirmRef.current = 0;
-            }
+          } else {
+            p1ConfirmRef.current = 0;
           }
         }
-      } else {
-        const elVision = document.getElementById('diag-vision');
-        const elVideo = document.getElementById('diag-video');
-        const elSize = document.getElementById('diag-size');
-        const elPoses = document.getElementById('diag-poses');
-        const elPlayers = document.getElementById('diag-players');
-        const elLoop = document.getElementById('diag-loop');
 
-        if (elVision) elVision.innerText = isVisionReady ? 'READY' : 'LOADING';
-        if (elVideo) {
-          elVideo.innerText = videoElement ? `READYSTATE ${videoElement.readyState}` : 'NOT FOUND';
-          elVideo.className = 'text-red-400';
+        // 2. Process Player 2 (multiplayer only)
+        if (!isSolo && p2 && !p2Done) {
+          p2HistoryRef.current.push(p2.bodyLandmarks);
+          if (p2HistoryRef.current.length > 30) p2HistoryRef.current.shift();
+
+          const isP2ActionMatch = detectIceBreakerAction(
+            currentChallenge.detectorKey,
+            p2.bodyLandmarks,
+            p2Baseline,
+            p2HistoryRef.current
+          );
+
+          if (isP2ActionMatch) {
+            p2ConfirmRef.current++;
+            if (p2ConfirmRef.current >= 5) {
+              setP2Done(true);
+              const reaction = Math.round(performance.now() - challengeStartTimeRef.current);
+              setP2ReactionTime(reaction);
+            }
+          } else {
+            p2ConfirmRef.current = 0;
+          }
         }
-        if (elSize) elSize.innerText = videoElement ? `${videoElement.videoWidth}x${videoElement.videoHeight}` : '0x0';
-        if (elPoses) elPoses.innerText = '0';
-        if (elPlayers) elPlayers.innerText = '0';
-        if (elLoop) {
-          elLoop.innerText = loopActiveRef.current ? 'RUNNING' : 'STOPPED';
-          elLoop.className = 'text-red-400';
-        }
       }
-
-      if (loopActiveRef.current) {
-        animationFrameIdRef.current = requestAnimationFrame(runDetection);
-      }
-    };
-
-    if (cvStatus === 'working') {
-      loopActiveRef.current = true;
-      animationFrameIdRef.current = requestAnimationFrame(runDetection);
-    } else {
-      loopActiveRef.current = false;
-      if (animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
-        animationFrameIdRef.current = null;
-      }
-      setPlayers([]);
-    }
-
-    return () => {
-      loopActiveRef.current = false;
-      if (animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
-        animationFrameIdRef.current = null;
-      }
-    };
-  }, [cvStatus, gameState, currentChallenge, p1Baseline, p2Baseline, p1Done, p2Done, isSolo, requiredPlayers]);
-
-  // Clean release on unmount
-  useEffect(() => {
-    handleStartCameraAndVision();
-
-    return () => {
-      if (streamRef.current) {
-        stopCameraStream(streamRef.current);
-      }
-      if (poseLandmarkerRef.current) {
-        poseLandmarkerRef.current.close();
-        poseLandmarkerRef.current = null;
-      }
-      if (handLandmarkerRef.current) {
-        handLandmarkerRef.current.close();
-        handLandmarkerRef.current = null;
-      }
-    };
-  }, []);
+    },
+    [gameState, currentChallenge, p1Baseline, p2Baseline, p1Done, p2Done, isSolo, requiredPlayers]
+  );
 
   // Shuffle challenges at start
   useEffect(() => {
     setRoundsChallenges(getRandomChallenges(ICE_BREAKER_ROUND_COUNT));
   }, []);
+
+  const [isMuted, setIsMuted] = useState(() => soundFx.getMuted());
+
+  const handleToggleMute = () => {
+    const nextMuted = soundFx.toggleMute();
+    setIsMuted(nextMuted);
+  };
 
   // Timer Tick Interval Controller
   useEffect(() => {
@@ -310,6 +165,7 @@ export default function IceBreakerGame() {
           handleStateTransition();
           return 0;
         }
+        soundFx.playCountdownBeep(prev * 120 + 360);
         return prev - 1;
       });
     }, 1000);
@@ -321,8 +177,10 @@ export default function IceBreakerGame() {
   useEffect(() => {
     if (gameState === 'challenge-active') {
       if (isSolo && p1Done) {
+        soundFx.playSuccessSound();
         handleCompleteRound();
       } else if (!isSolo && p1Done && p2Done) {
+        soundFx.playSuccessSound();
         handleCompleteRound();
       }
     }
@@ -363,6 +221,7 @@ export default function IceBreakerGame() {
 
   const handleStateTransition = () => {
     if (gameState === 'countdown') {
+      soundFx.playGoSound();
       // Calibrate baselines at countdown end
       const baseP1 = computeBaseline(p1CalibrationSamplesRef.current);
       setP1Baseline(baseP1);
@@ -385,6 +244,7 @@ export default function IceBreakerGame() {
       p2HistoryRef.current = [];
       challengeStartTimeRef.current = performance.now();
     } else if (gameState === 'challenge-active') {
+      soundFx.playSuccessSound();
       // 5-second timer runout
       handleCompleteRound();
     }
@@ -446,12 +306,14 @@ export default function IceBreakerGame() {
   };
 
   const handleNextRound = () => {
+    soundFx.playClickSound();
     if (currentRound < ICE_BREAKER_ROUND_COUNT) {
       p1CalibrationSamplesRef.current = [];
       p2CalibrationSamplesRef.current = [];
       setCurrentRound(prev => prev + 1);
       setGameState('round-intro');
     } else {
+      soundFx.playWinnerSound();
       if (isSolo) {
         const updated = savePersonalBest('ice-breaker', scores.p1);
         setIsNewPb(updated);
@@ -461,11 +323,13 @@ export default function IceBreakerGame() {
   };
 
   const handleStartRound = () => {
+    soundFx.playClickSound();
     setGameState('countdown');
     setCountdown(3);
   };
 
   const handleRestart = () => {
+    soundFx.playClickSound();
     setScores({ p1: 0, p2: 0 });
     setRoundStates([]);
     setCurrentRound(1);
@@ -481,7 +345,7 @@ export default function IceBreakerGame() {
     exit: { opacity: 0, scale: 0.95, transition: { duration: 0.2 } }
   };
 
-  if (cvStatus === 'initializing' || cvStatus === 'loading-vision') {
+  if (cvStatus === 'initializing') {
     return (
       <div className="relative w-screen h-screen flex flex-col items-center justify-center bg-bg-cream text-slate-800 select-none">
         <PlayfulBackgroundShapes />
@@ -510,10 +374,12 @@ export default function IceBreakerGame() {
             Vision System Offline
           </h2>
           <p className="font-sans text-xs text-slate-550 leading-relaxed font-semibold mb-6">
-            Something went wrong loading the computer-vision system. Please try restarting.
+            {error?.type === 'camera'
+              ? 'Please allow camera access in your browser and try again.'
+              : 'Something went wrong loading the computer-vision system. Please try restarting.'}
           </p>
           <button
-            onClick={handleStartCameraAndVision}
+            onClick={retry}
             className="px-6 py-2.5 bg-brand-coral text-white font-display font-black text-sm uppercase rounded-xl border-2 border-slate-950 shadow-chunky-sm"
           >
             Retry Setup
@@ -529,23 +395,34 @@ export default function IceBreakerGame() {
 
       {/* Header */}
       <div className="w-full flex items-center justify-between z-20">
-        <motion.div
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="relative group cursor-pointer"
-        >
-          <span className="absolute inset-0 w-full h-full bg-slate-950 rounded-xl translate-x-1 translate-y-1 group-active:translate-x-0.5 group-active:translate-y-0.5 transition-transform" />
-          <button 
-            onClick={() => {
-              stopCameraStream(streamRef.current);
-              navigate('/games');
-            }}
-            className="relative flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-slate-950 rounded-xl text-slate-800 font-display font-bold text-xs uppercase tracking-wider cursor-pointer"
+        <div className="flex items-center gap-2">
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="relative group cursor-pointer"
           >
-            <ArrowLeft className="w-3.5 h-3.5 stroke-[3]" />
-            <span>Quit</span>
+            <span className="absolute inset-0 w-full h-full bg-slate-950 rounded-xl translate-x-1 translate-y-1 group-active:translate-x-0.5 group-active:translate-y-0.5 transition-transform" />
+            <button
+              onClick={() => {
+                soundFx.playClickSound();
+                visionEngine.stop();
+                navigate('/games');
+              }}
+              className="relative flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-slate-950 rounded-xl text-slate-800 font-display font-bold text-xs uppercase tracking-wider cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 stroke-[3]" />
+              <span>Quit</span>
+            </button>
+          </motion.div>
+
+          <button
+            onClick={handleToggleMute}
+            className="p-2 bg-white border-2 border-slate-950 rounded-xl text-slate-800 hover:bg-slate-100 shadow-chunky-sm cursor-pointer"
+            title={isMuted ? "Unmute Sound" : "Mute Sound"}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-brand-purple" />}
           </button>
-        </motion.div>
+        </div>
 
         <div className="flex flex-col items-center">
           <div className="font-display font-black text-lg text-slate-950 uppercase tracking-wide">
@@ -562,19 +439,25 @@ export default function IceBreakerGame() {
       </div>
 
       {/* Safety Pause warning overlay */}
-      {gameState !== 'intro' && gameState !== 'round-result' && gameState !== 'game-over' && players.length < requiredPlayers && (
+      {['countdown', 'challenge-active'].includes(gameState) && players.length < requiredPlayers && (
         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 animate-fade">
           <div className="flex flex-col items-center text-center p-8 bg-white border-[3px] border-slate-950 rounded-3xl shadow-chunky max-w-sm m-4">
             <div className="w-14 h-14 rounded-2xl bg-brand-yellow border-2 border-slate-950 flex items-center justify-center text-slate-950 mb-4 shadow-chunky-sm animate-bounce">
               <AlertTriangle className="w-7 h-7 stroke-[2.5]" />
             </div>
             <h3 className="font-display font-black text-xl text-slate-950 uppercase mb-2">
-              Step Into The Frame
+              {isSolo 
+                ? 'Step Into The Frame' 
+                : players.length === 1 
+                  ? 'Player 2, Step Into The Frame' 
+                  : 'Step Into The Frame'}
             </h3>
             <p className="font-sans text-xs text-slate-500 font-semibold leading-relaxed">
               {isSolo 
                 ? 'We need you visible in the camera frame to complete the physical challenges!' 
-                : 'We need both players fully visible in the camera to continue the physical challenges!'}
+                : players.length === 1
+                  ? `We need ${player2.name} in the camera frame to continue the physical challenges!`
+                  : 'We need both players fully visible in the camera to continue the physical challenges!'}
             </p>
           </div>
         </div>
@@ -975,15 +858,37 @@ export default function IceBreakerGame() {
                 </>
               )}
 
-              {/* Restart Button */}
-              <div className="relative group w-full max-w-[180px]">
-                <span className="absolute inset-0 w-full h-full bg-slate-950 rounded-xl translate-x-1 translate-y-1 group-hover:translate-x-1.5 group-hover:translate-y-1.5 group-active:translate-x-0.5 group-active:translate-y-0.5 transition-transform" />
+              {/* Action Buttons: Play Again / Change Game / Home */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-sm">
                 <button
                   onClick={handleRestart}
-                  className="relative w-full py-3 bg-brand-purple text-white font-display font-black text-base uppercase tracking-wider rounded-xl border-2 border-slate-950 cursor-pointer group-hover:-translate-y-0.5 group-active:translate-y-0.5 transition-transform"
+                  className="w-full py-3 bg-brand-purple text-white font-display font-black text-sm uppercase tracking-wider rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <RefreshCw className="w-4 h-4 inline-block mr-2" />
-                  <span>Play Again</span>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>{isSolo ? 'Play Again' : 'Rematch'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    soundFx.playClickSound();
+                    navigate('/games');
+                  }}
+                  className="w-full py-3 bg-white text-slate-800 font-display font-black text-sm uppercase tracking-wider rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Grid className="w-4 h-4" />
+                  <span>Change Game</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    soundFx.playClickSound();
+                    visionEngine.stop();
+                    navigate('/');
+                  }}
+                  className="w-full sm:w-auto p-3 bg-white text-slate-700 font-display font-black text-sm uppercase rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center"
+                  title="Home"
+                >
+                  <Home className="w-4 h-4" />
                 </button>
               </div>
             </motion.div>
@@ -993,15 +898,8 @@ export default function IceBreakerGame() {
 
       <div className="h-10 opacity-0 pointer-events-none" />
 
-      {/* Diagnostics Debug Panel */}
-      <div className="absolute bottom-2 left-2 bg-slate-900/90 text-white font-mono text-[9px] p-2 rounded-lg border border-slate-700 z-50 text-left pointer-events-none select-none flex flex-col gap-0.5">
-        <div>VISION: <span id="diag-vision" className="text-brand-yellow font-bold">INIT</span></div>
-        <div>VIDEO: <span id="diag-video" className="text-red-400">NOT READY</span></div>
-        <div>SIZE: <span id="diag-size">0x0</span></div>
-        <div>POSES: <span id="diag-poses">0</span></div>
-        <div>PLAYERS: <span id="diag-players">0</span></div>
-        <div>LOOP: <span id="diag-loop" className="text-red-400">STOPPED</span></div>
-      </div>
+      {/* Diagnostics Debug Panel (development only) */}
+      {import.meta.env.DEV && <VisionDebugOverlay requiredPlayers={requiredPlayers} showCanvas={false} />}
 
     </div>
   );

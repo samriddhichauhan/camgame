@@ -2,22 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
-import { ArrowLeft, ArrowRight, RefreshCw, Clock, AlertTriangle, Trophy, Sparkles, Award } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RefreshCw, Clock, AlertTriangle, Trophy, Sparkles, Award, Volume2, VolumeX, Home, Grid } from 'lucide-react';
 import { useGameSession } from '../../context/GameSessionContext';
 import ProgressIndicator from '../../components/ProgressIndicator';
 import PlayfulBackgroundShapes from '../../components/PlayfulBackgroundShapes';
 import CameraPreview from '../../components/CameraPreview';
 import DetectedPlayerOverlay from '../../components/DetectedPlayerOverlay';
 import CopyCatSkeletonCompare from './CopyCatSkeletonCompare';
-import { startCameraStream } from '../../camera/StartCameraStream';
-import { stopCameraStream } from '../../camera/StopCameraStream';
-import { initializePoseDetection } from '../../computer-vision/InitializePoseDetection';
-import { initializeHandDetection } from '../../computer-vision/InitializeHandDetection';
-import { detectBodyPose } from '../../computer-vision/DetectBodyPose';
-import { detectHandLandmarks } from '../../computer-vision/DetectHandLandmarks';
-import { detectPlayers } from '../../computer-vision/DetectPlayers';
-import type { DetectedPlayer, BodyLandmark } from '../../computer-vision/ComputerVisionTypes';
-import type { PoseLandmarker, HandLandmarker } from '@mediapipe/tasks-vision';
+import { visionEngine } from '../../vision/VisionEngine';
+import { useVisionSystem, useVisionFrameSubscription } from '../../vision/useVisionEngine';
+import VisionDebugOverlay from '../../vision/debug/VisionDebugOverlay';
+import type { TrackedPlayer, BodyLandmark } from '../../vision/types/VisionTypes';
+import { soundFx } from '../../utils/SoundEffects';
 
 import type { CopyCatStatus } from './CopyCatGameTypes';
 import { calculateCopyCatScore } from './CalculateCopyCatScore';
@@ -38,21 +34,13 @@ export default function CopyCatGame() {
 
   const isSolo = gameMode === 'SINGLE_PLAYER';
   const totalRounds = isSolo ? 5 : 3;
-  const requiredPlayers = isSolo ? 1 : 2;
+  const requiredPlayers: 1 | 2 = isSolo ? 1 : 2;
 
-  // Stream & CV setup states
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [cvStatus, setCvStatus] = useState<'initializing' | 'loading-vision' | 'working' | 'error'>('initializing');
-  const [players, setPlayers] = useState<DetectedPlayer[]>([]);
-
-  // Refs for tracking background task instances
-  const poseLandmarkerRef = useRef<PoseLandmarker | null>(null);
-  const handLandmarkerRef = useRef<HandLandmarker | null>(null);
-  const loopActiveRef = useRef<boolean>(false);
-  const animationFrameIdRef = useRef<number | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const lastLogTimeRef = useRef<number>(0);
-  const lastPlayerCountRef = useRef<number>(-1);
+  // Shared vision engine — camera + person detection + pose + tracking all
+  // live outside this component. This screen only consumes the player API.
+  const { stream, starting, error, retry } = useVisionSystem(requiredPlayers, player2.name);
+  const cvStatus: 'initializing' | 'working' | 'error' = error ? 'error' : starting ? 'initializing' : 'working';
+  const [players, setPlayers] = useState<TrackedPlayer[]>([]);
 
   // Computer Poses Library for Solo Mode
   const [computerPoses, setComputerPoses] = useState<ComputerPose[]>(() => getRandomComputerPoses(5));
@@ -77,179 +65,41 @@ export default function CopyCatGame() {
   const leaderName = isSolo ? 'COMPUTER' : (currentRoundState.leaderPlayerIndex === 1 ? player1.name : player2.name);
   const copyCatName = isSolo ? player1.name : (currentRoundState.copyPlayerIndex === 1 ? player1.name : player2.name);
 
-  // Initialize camera and MediaPipe
-  const handleStartCameraAndVision = async () => {
-    setCvStatus('initializing');
-    let activeStream: MediaStream | null = null;
-    try {
-      // 1. Start camera stream
-      activeStream = await startCameraStream();
-      setStream(activeStream);
-      streamRef.current = activeStream;
+  // Consume the shared vision engine's per-frame output. Camera + person
+  // detection + pose + tracking all happen outside this component.
+  useVisionFrameSubscription(
+    (frame) => {
+      setPlayers(frame.players);
 
-      // 2. Set to loading vision state
-      setCvStatus('loading-vision');
+      if (gameState === 'leader-pose' && !isSolo) {
+        // Sample landmarks during the hold phase (multiplayer only)
+        const leader = frame.players.find((p) => p.playerIndex === currentRoundState.leaderPlayerIndex);
+        if (leader) {
+          leaderSamplesRef.current.push(leader.bodyLandmarks);
+        }
+      } else if (gameState === 'copy-pose' && capturedPose) {
+        // Compare copycat to reference pose
+        const copyCat = isSolo
+          ? (frame.players.find((p) => p.playerIndex === 1) || frame.players[0])
+          : frame.players.find((p) => p.playerIndex === currentRoundState.copyPlayerIndex);
 
-      // 3. Load MediaPipe task models
-      if (!poseLandmarkerRef.current) {
-        poseLandmarkerRef.current = await initializePoseDetection();
+        if (copyCat) {
+          const rawScore = calculateCopyCatScore(capturedPose, copyCat.bodyLandmarks);
+          // Apply smoothing running average to avoid flickering scores
+          smoothedScoreRef.current = 0.85 * smoothedScoreRef.current + 0.15 * rawScore;
+          setLiveScore(Math.round(smoothedScoreRef.current));
+        }
       }
-      if (!handLandmarkerRef.current) {
-        handLandmarkerRef.current = await initializeHandDetection();
-      }
+    },
+    [gameState, capturedPose, currentRoundState, isSolo]
+  );
 
-      setCvStatus('working');
-    } catch (err) {
-      console.error('CopyCat vision error:', err);
-      if (activeStream) {
-        stopCameraStream(activeStream);
-        setStream(null);
-        streamRef.current = null;
-      }
-      setCvStatus('error');
-    }
+  const [isMuted, setIsMuted] = useState(() => soundFx.getMuted());
+
+  const handleToggleMute = () => {
+    const nextMuted = soundFx.toggleMute();
+    setIsMuted(nextMuted);
   };
-
-  // Real-time computer vision frame detection loop
-  useEffect(() => {
-    const updateDiagDOM = (vision: string, video: string, size: string, poses: number, playersCount: number, loop: string) => {
-      const elVision = document.getElementById('diag-vision');
-      const elVideo = document.getElementById('diag-video');
-      const elSize = document.getElementById('diag-size');
-      const elPoses = document.getElementById('diag-poses');
-      const elPlayers = document.getElementById('diag-players');
-      const elLoop = document.getElementById('diag-loop');
-
-      if (elVision) elVision.innerText = vision;
-      if (elVideo) {
-        elVideo.innerText = video;
-        elVideo.className = video === 'READY' ? 'text-green-400 font-bold' : 'text-red-400';
-      }
-      if (elSize) elSize.innerText = size;
-      if (elPoses) elPoses.innerText = String(poses);
-      if (elPlayers) elPlayers.innerText = String(playersCount);
-      if (elLoop) {
-        elLoop.innerText = loop;
-        elLoop.className = loop === 'RUNNING' ? 'text-green-400 font-bold' : 'text-red-400';
-      }
-    };
-
-    const runDetection = () => {
-      const videoElement = document.getElementById('vybe-webcam-video') as HTMLVideoElement | null;
-      const poseLandmarker = poseLandmarkerRef.current;
-      const handLandmarker = handLandmarkerRef.current;
-
-      const isVideoReady = videoElement && videoElement.readyState >= 2 && videoElement.videoWidth > 0 && videoElement.videoHeight > 0;
-      const isVisionReady = !!(poseLandmarker && handLandmarker);
-
-      if (isVideoReady && isVisionReady && videoElement && poseLandmarker && handLandmarker) {
-        const timestamp = performance.now();
-        const poseResult = detectBodyPose(poseLandmarker, videoElement, timestamp);
-        const handResult = detectHandLandmarks(handLandmarker, videoElement, timestamp);
-        const detectedPlayers = detectPlayers(poseResult, handResult);
-        
-        setPlayers(detectedPlayers);
-
-        const numPosesDetected = poseResult?.landmarks ? poseResult.landmarks.length : 0;
-        const numPlayersDetected = detectedPlayers.length;
-
-        // Update Diagnostics DOM
-        updateDiagDOM(
-          'READY',
-          'READY',
-          `${videoElement.videoWidth}x${videoElement.videoHeight}`,
-          numPosesDetected,
-          numPlayersDetected,
-          'RUNNING'
-        );
-
-        // Throttled Console Log
-        const now = performance.now();
-        if (now - lastLogTimeRef.current > 2000 || numPlayersDetected !== lastPlayerCountRef.current) {
-          console.log(`[CopyCat Game] MediaPipe raw poses: ${numPosesDetected}, players mapped: ${numPlayersDetected}`);
-          lastLogTimeRef.current = now;
-          lastPlayerCountRef.current = numPlayersDetected;
-        }
-
-        // Perform real-time pose calculations depending on game state
-        if (gameState === 'leader-pose' && !isSolo) {
-          // Sample landmarks during the hold phase (multiplayer only)
-          const leader = detectedPlayers.find((p) => p.playerIndex === currentRoundState.leaderPlayerIndex);
-          if (leader) {
-            leaderSamplesRef.current.push(leader.bodyLandmarks);
-          }
-        } else if (gameState === 'copy-pose' && capturedPose) {
-          // Compare copycat to reference pose
-          const copyCat = isSolo 
-            ? (detectedPlayers.find((p) => p.playerIndex === 1) || detectedPlayers[0])
-            : detectedPlayers.find((p) => p.playerIndex === currentRoundState.copyPlayerIndex);
-          
-          if (copyCat) {
-            const rawScore = calculateCopyCatScore(capturedPose, copyCat.bodyLandmarks);
-            // Apply smoothing running average to avoid flickering scores
-            smoothedScoreRef.current = 0.85 * smoothedScoreRef.current + 0.15 * rawScore;
-            setLiveScore(Math.round(smoothedScoreRef.current));
-          }
-        }
-      } else {
-        const readyState = videoElement ? videoElement.readyState : 0;
-        const width = videoElement ? videoElement.videoWidth : 0;
-        const height = videoElement ? videoElement.videoHeight : 0;
-
-        updateDiagDOM(
-          isVisionReady ? 'READY' : (cvStatus === 'loading-vision' ? 'LOADING' : 'ERROR'),
-          videoElement ? `READYSTATE ${readyState}` : 'NOT FOUND',
-          `${width}x${height}`,
-          0,
-          0,
-          loopActiveRef.current ? 'RUNNING' : 'STOPPED'
-        );
-      }
-
-      if (loopActiveRef.current) {
-        animationFrameIdRef.current = requestAnimationFrame(runDetection);
-      }
-    };
-
-    if (cvStatus === 'working') {
-      loopActiveRef.current = true;
-      animationFrameIdRef.current = requestAnimationFrame(runDetection);
-    } else {
-      loopActiveRef.current = false;
-      if (animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
-        animationFrameIdRef.current = null;
-      }
-      setPlayers([]);
-    }
-
-    return () => {
-      loopActiveRef.current = false;
-      if (animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
-        animationFrameIdRef.current = null;
-      }
-    };
-  }, [cvStatus, gameState, capturedPose, currentRoundState, isSolo]);
-
-  // Clean release on unmount
-  useEffect(() => {
-    handleStartCameraAndVision();
-
-    return () => {
-      if (streamRef.current) {
-        stopCameraStream(streamRef.current);
-      }
-      if (poseLandmarkerRef.current) {
-        poseLandmarkerRef.current.close();
-        poseLandmarkerRef.current = null;
-      }
-      if (handLandmarkerRef.current) {
-        handLandmarkerRef.current.close();
-        handLandmarkerRef.current = null;
-      }
-    };
-  }, []);
 
   // Timer Tick Interval Controller
   useEffect(() => {
@@ -265,6 +115,7 @@ export default function CopyCatGame() {
           handleStateTransition();
           return 0;
         }
+        soundFx.playCountdownBeep(prev * 120 + 360);
         return prev - 1;
       });
     }, 1000);
@@ -274,6 +125,7 @@ export default function CopyCatGame() {
 
   // Start round intro countdown
   const handleStartRound = () => {
+    soundFx.playClickSound();
     if (isSolo) {
       const compPose = computerPoses[currentRound - 1] || computerPoses[0];
       setCapturedPose(compPose.landmarks);
@@ -306,12 +158,14 @@ export default function CopyCatGame() {
       }
     } else if (gameState === 'copy-ready') {
       // Copy Cat matching phase
+      soundFx.playGoSound();
       setGameState('copy-pose');
       setCountdown(7);
       smoothedScoreRef.current = 0;
       setLiveScore(0);
     } else if (gameState === 'copy-pose') {
       // Save round results
+      soundFx.playSuccessSound();
       const finalScore = Math.max(10, Math.min(100, liveScore));
       setRoundScores((prev) => {
         const next = [...prev];
@@ -323,11 +177,13 @@ export default function CopyCatGame() {
   };
 
   const handleNextRound = () => {
+    soundFx.playClickSound();
     if (currentRound < totalRounds) {
       setCapturedPose(null);
       setCurrentRound(prev => prev + 1);
       setGameState('round-intro');
     } else {
+      soundFx.playWinnerSound();
       if (isSolo) {
         const soloAvg = getSoloAverage();
         const updated = savePersonalBest('copy-cat', soloAvg);
@@ -338,6 +194,7 @@ export default function CopyCatGame() {
   };
 
   const handleRestart = () => {
+    soundFx.playClickSound();
     setRoundScores(Array(isSolo ? 5 : 3).fill(0));
     setCurrentRound(1);
     setCapturedPose(null);
@@ -378,18 +235,26 @@ export default function CopyCatGame() {
   // Animation variants
   const containerVariants: Variants = {
     hidden: { opacity: 0, scale: 0.95 },
-    visible: { opacity: 1, scale: 1, transition: { duration: 0.2 } },
-    exit: { opacity: 0, scale: 0.95, transition: { duration: 0.2 } }
+    visible: { 
+      opacity: 1, 
+      scale: 1,
+      transition: { type: 'spring', stiffness: 140, damping: 15 }
+    },
+    exit: { 
+      opacity: 0, 
+      scale: 0.95,
+      transition: { duration: 0.15 } 
+    }
   };
 
   // Render CV Setup states
-  if (cvStatus === 'initializing' || cvStatus === 'loading-vision') {
+  if (cvStatus === 'initializing') {
     return (
       <div className="relative w-screen h-screen flex flex-col items-center justify-center bg-bg-cream text-slate-800 select-none">
         <PlayfulBackgroundShapes />
-        <div className="flex flex-col items-center text-center p-8 bg-white border-[3px] border-slate-950 rounded-3xl shadow-chunky z-10 max-w-sm">
-          <div className="w-12 h-12 rounded-full border-4 border-dashed border-brand-purple animate-spin mb-4" />
-          <h2 className="font-display font-black text-xl text-slate-950 uppercase mb-1">
+        <div className="flex flex-col items-center text-center p-8 bg-white border-[3px] border-slate-950 rounded-3xl shadow-chunky z-10">
+          <div className="w-10 h-10 rounded-full border-4 border-dashed border-brand-purple animate-spin mb-4" />
+          <h2 className="font-display font-black text-xl text-slate-950 uppercase mb-2">
             Getting VYBE Ready...
           </h2>
           <p className="font-sans text-xs text-slate-500 font-semibold animate-pulse">
@@ -411,11 +276,13 @@ export default function CopyCatGame() {
           <h2 className="font-display font-black text-xl text-slate-950 uppercase mb-2">
             Vision System Offline
           </h2>
-          <p className="font-sans text-xs text-slate-550 leading-relaxed font-semibold mb-6">
-            Something went wrong loading the computer-vision system. Please try restarting.
+          <p className="font-sans text-xs text-slate-555 leading-relaxed font-semibold mb-6">
+            {error?.type === 'camera'
+              ? 'Please allow camera access in your browser and try again.'
+              : 'Something went wrong loading the computer-vision system. Please try restarting.'}
           </p>
           <button
-            onClick={handleStartCameraAndVision}
+            onClick={retry}
             className="px-6 py-2.5 bg-brand-coral text-white font-display font-black text-sm uppercase rounded-xl border-2 border-slate-950 shadow-chunky-sm"
           >
             Retry Setup
@@ -431,23 +298,34 @@ export default function CopyCatGame() {
 
       {/* Screen Header */}
       <div className="w-full flex items-center justify-between z-20">
-        <motion.div
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="relative group cursor-pointer"
-        >
-          <span className="absolute inset-0 w-full h-full bg-slate-950 rounded-xl translate-x-1 translate-y-1 group-active:translate-x-0.5 group-active:translate-y-0.5 transition-transform" />
-          <button 
-            onClick={() => {
-              stopCameraStream(streamRef.current);
-              navigate('/games');
-            }}
-            className="relative flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-slate-950 rounded-xl text-slate-800 font-display font-bold text-xs uppercase tracking-wider cursor-pointer"
+        <div className="flex items-center gap-2">
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="relative group cursor-pointer"
           >
-            <ArrowLeft className="w-3.5 h-3.5 stroke-[3]" />
-            <span>Quit</span>
+            <span className="absolute inset-0 w-full h-full bg-slate-950 rounded-xl translate-x-1 translate-y-1 group-active:translate-x-0.5 group-active:translate-y-0.5 transition-transform" />
+            <button
+              onClick={() => {
+                soundFx.playClickSound();
+                visionEngine.stop();
+                navigate('/games');
+              }}
+              className="relative flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-slate-950 rounded-xl text-slate-800 font-display font-bold text-xs uppercase tracking-wider cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 stroke-[3]" />
+              <span>Quit</span>
+            </button>
+          </motion.div>
+
+          <button
+            onClick={handleToggleMute}
+            className="p-2 bg-white border-2 border-slate-950 rounded-xl text-slate-800 hover:bg-slate-100 shadow-chunky-sm cursor-pointer"
+            title={isMuted ? "Unmute Sound" : "Mute Sound"}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-brand-purple" />}
           </button>
-        </motion.div>
+        </div>
 
         {/* HUD Game & Round Information */}
         <div className="flex flex-col items-center">
@@ -464,20 +342,26 @@ export default function CopyCatGame() {
         <ProgressIndicator currentStep={4} />
       </div>
 
-      {/* PAUSE OVERLAY: Show if required players go out of frame during active countdown phases */}
-      {gameState !== 'intro' && gameState !== 'round-result' && gameState !== 'game-over' && players.length < requiredPlayers && (
+      {/* PAUSE OVERLAY: Show if required players go out of frame during active gameplay phases */}
+      {['leader-ready', 'leader-pose', 'copy-ready', 'copy-pose'].includes(gameState) && players.length < requiredPlayers && (
         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 animate-fade">
           <div className="flex flex-col items-center text-center p-8 bg-white border-[3px] border-slate-950 rounded-3xl shadow-chunky max-w-sm m-4">
             <div className="w-14 h-14 rounded-2xl bg-brand-yellow border-2 border-slate-950 flex items-center justify-center text-slate-950 mb-4 shadow-chunky-sm animate-bounce">
               <AlertTriangle className="w-7 h-7 stroke-[2.5]" />
             </div>
             <h3 className="font-display font-black text-xl text-slate-950 uppercase mb-2">
-              Step Into The Frame
+              {isSolo 
+                ? 'Step Into The Frame' 
+                : players.length === 1 
+                  ? 'Player 2, Step Into The Frame' 
+                  : 'Step Into The Frame'}
             </h3>
             <p className="font-sans text-xs text-slate-500 font-semibold leading-relaxed">
               {isSolo 
-                ? 'We need you clearly visible in the camera frame to match your pose!' 
-                : 'We need both players fully visible in the camera to continue the copy matching!'}
+                ? 'We need you clearly visible in the camera frame to continue matching!' 
+                : players.length === 1
+                  ? `We need ${player2.name} in the camera frame to continue the copy matching!`
+                  : 'We need both players fully visible in the camera to continue the copy matching!'}
             </p>
           </div>
         </div>
@@ -606,26 +490,36 @@ export default function CopyCatGame() {
               className="w-full flex flex-col items-center gap-4"
             >
               {isSolo ? (
-                <div className="flex flex-col items-center text-center max-w-md w-full p-8 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky">
-                  <span className="px-3 py-1 rounded-full bg-brand-coral text-white border-2 border-slate-950 font-display font-black text-xs uppercase tracking-widest shadow-chunky-sm mb-3">
-                    WATCH THE POSE
-                  </span>
-                  
-                  {computerPoses[currentRound - 1] && (
-                    <div className="flex flex-col items-center my-4">
-                      <span className="text-6xl mb-3 animate-bounce">{computerPoses[currentRound - 1].emoji}</span>
-                      <h2 className="font-display font-black text-3xl uppercase tracking-wide text-slate-950 mb-1">
-                        {computerPoses[currentRound - 1].name}
-                      </h2>
-                      <p className="font-sans text-xs text-slate-500 font-semibold max-w-xs">
-                        {computerPoses[currentRound - 1].description}
-                      </p>
-                    </div>
-                  )}
+                <div className="w-full flex flex-col items-center gap-4">
+                  <div className="flex flex-col items-center text-center">
+                    <span className="px-3 py-1 rounded-full bg-brand-coral text-white border-2 border-slate-950 font-display font-black text-xs uppercase tracking-widest shadow-chunky-sm mb-1">
+                      WATCH THE POSE
+                    </span>
+                    <h2 className="font-display font-black text-2xl uppercase tracking-wide text-slate-900 leading-tight">
+                      Memorize the pose below!
+                    </h2>
+                  </div>
 
-                  <div className="mt-4 flex flex-col items-center">
-                    <span className="text-slate-400 font-display font-black text-[10px] uppercase tracking-widest mb-1">YOUR TURN IN</span>
-                    <span className="text-brand-purple font-display font-black text-6xl drop-shadow-chunky">{countdown}</span>
+                  <div className="relative w-full max-w-md aspect-[4/3] rounded-3xl overflow-hidden border-[3px] border-slate-950 shadow-chunky bg-slate-950">
+                    <CameraPreview stream={stream} />
+                    <DetectedPlayerOverlay players={players} />
+
+                    {computerPoses[currentRound - 1] && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/45 backdrop-blur-[1px] pointer-events-none p-4 text-center">
+                        <span className="text-5xl mb-2 animate-bounce">{computerPoses[currentRound - 1].emoji}</span>
+                        <span className="text-white font-display font-black text-xl uppercase tracking-wider mb-1 drop-shadow">
+                          {computerPoses[currentRound - 1].name}
+                        </span>
+                        <span className="text-white/80 font-sans text-xs font-semibold mb-3 max-w-xs drop-shadow-sm">
+                          {computerPoses[currentRound - 1].description}
+                        </span>
+                        
+                        <span className="text-slate-300 font-display font-black text-[9px] uppercase tracking-widest mb-0.5">YOUR TURN IN</span>
+                        <span className="text-brand-yellow font-display font-black text-5xl drop-shadow-chunky">
+                          {countdown}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -868,15 +762,37 @@ export default function CopyCatGame() {
                 </>
               )}
 
-              {/* Restart Button */}
-              <div className="relative group w-full max-w-[180px]">
-                <span className="absolute inset-0 w-full h-full bg-slate-950 rounded-xl translate-x-1 translate-y-1 group-hover:translate-x-1.5 group-hover:translate-y-1.5 group-active:translate-x-0.5 group-active:translate-y-0.5 transition-transform" />
+              {/* Action Buttons: Play Again / Change Game / Home */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-sm">
                 <button
                   onClick={handleRestart}
-                  className="relative w-full py-3 bg-brand-purple text-white font-display font-black text-base uppercase tracking-wider rounded-xl border-2 border-slate-950 cursor-pointer group-hover:-translate-y-0.5 group-active:translate-y-0.5 transition-transform"
+                  className="w-full py-3 bg-brand-purple text-white font-display font-black text-sm uppercase tracking-wider rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <RefreshCw className="w-4 h-4 inline-block mr-2" />
-                  <span>Play Again</span>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>{isSolo ? 'Play Again' : 'Rematch'}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    soundFx.playClickSound();
+                    navigate('/games');
+                  }}
+                  className="w-full py-3 bg-white text-slate-800 font-display font-black text-sm uppercase tracking-wider rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Grid className="w-4 h-4" />
+                  <span>Change Game</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    soundFx.playClickSound();
+                    visionEngine.stop();
+                    navigate('/');
+                  }}
+                  className="w-full sm:w-auto p-3 bg-white text-slate-700 font-display font-black text-sm uppercase rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center"
+                  title="Home"
+                >
+                  <Home className="w-4 h-4" />
                 </button>
               </div>
             </motion.div>
@@ -887,15 +803,8 @@ export default function CopyCatGame() {
       {/* Spacer */}
       <div className="h-10 opacity-0 pointer-events-none" />
 
-      {/* Diagnostics Debug Panel */}
-      <div className="absolute bottom-2 left-2 bg-slate-900/90 text-white font-mono text-[9px] p-2 rounded-lg border border-slate-700 z-50 text-left pointer-events-none select-none flex flex-col gap-0.5">
-        <div>VISION: <span id="diag-vision" className="text-brand-yellow font-bold">INIT</span></div>
-        <div>VIDEO: <span id="diag-video" className="text-red-400">NOT READY</span></div>
-        <div>SIZE: <span id="diag-size">0x0</span></div>
-        <div>POSES: <span id="diag-poses">0</span></div>
-        <div>PLAYERS: <span id="diag-players">0</span></div>
-        <div>LOOP: <span id="diag-loop" className="text-red-400">STOPPED</span></div>
-      </div>
+      {/* VISION DEBUG PANEL (development only) */}
+      {import.meta.env.DEV && <VisionDebugOverlay requiredPlayers={requiredPlayers} showCanvas={false} />}
 
     </div>
   );

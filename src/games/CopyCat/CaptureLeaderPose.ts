@@ -1,4 +1,4 @@
-import type { BodyLandmark } from '../../computer-vision/ComputerVisionTypes';
+import type { BodyLandmark } from '../../vision/types/VisionTypes';
 
 export function averagePoseSamples(samples: BodyLandmark[][]): BodyLandmark[] {
   if (samples.length === 0) return [];
