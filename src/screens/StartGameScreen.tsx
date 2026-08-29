@@ -281,10 +281,16 @@ export default function StartGameScreen() {
         </div>
       )}
 
-      {/* Footer spacer */}
-      <div className="hidden sm:block text-[9px] font-mono tracking-widest text-slate-400 uppercase pointer-events-none mt-2">
-        VYBE Platform © 2026
-      </div>
+      {/* Production Public Footer */}
+      <footer className="w-full flex items-center justify-center gap-3 sm:gap-5 text-[10px] font-mono font-bold text-slate-500 uppercase z-10 mt-2 pb-1">
+        <button onClick={() => { soundFx.playClickSound(); navigate('/privacy'); }} className="hover:text-brand-purple cursor-pointer underline">Privacy</button>
+        <span>•</span>
+        <button onClick={() => { soundFx.playClickSound(); navigate('/terms'); }} className="hover:text-brand-purple cursor-pointer underline">Terms</button>
+        <span>•</span>
+        <button onClick={() => { soundFx.playClickSound(); navigate('/about'); }} className="hover:text-brand-purple cursor-pointer underline">About</button>
+        <span>•</span>
+        <button onClick={() => { soundFx.playClickSound(); navigate('/contact'); }} className="hover:text-brand-purple cursor-pointer underline">Contact</button>
+      </footer>
 
     </div>
   );
