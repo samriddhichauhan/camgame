@@ -8,6 +8,8 @@ import GameSelectionCard from '../components/GameSelectionCard';
 import ProgressIndicator from '../components/ProgressIndicator';
 import PlayfulBackgroundShapes from '../components/PlayfulBackgroundShapes';
 
+import { soundFx } from '../utils/SoundEffects';
+
 export default function GameSelectionScreen() {
   const navigate = useNavigate();
   const {
@@ -29,6 +31,7 @@ export default function GameSelectionScreen() {
   const selectedGame = filteredGames.find((g) => g.id === selectedGameId);
 
   const handleContinue = () => {
+    soundFx.playClickSound();
     if (selectedGameId) {
       navigate('/camera');
     }
@@ -162,7 +165,10 @@ export default function GameSelectionScreen() {
               key={game.id}
               game={game}
               isSelected={selectedGameId === game.id}
-              onSelect={() => setSelectedGameId(game.id)}
+              onSelect={() => {
+                soundFx.playClickSound();
+                setSelectedGameId(game.id);
+              }}
             />
           ))}
         </motion.div>

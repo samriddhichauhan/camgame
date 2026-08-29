@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
@@ -5,11 +6,15 @@ import { Camera } from 'lucide-react';
 import VYBELogo from '../components/VYBELogo';
 import StartGameButton from '../components/StartGameButton';
 import PlayfulBackgroundShapes from '../components/PlayfulBackgroundShapes';
+import { soundFx } from '../utils/SoundEffects';
 
 export default function StartGameScreen() {
   const navigate = useNavigate();
 
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
+
   const handleStart = () => {
+    soundFx.playClickSound();
     navigate('/mode');
   };
 
@@ -72,9 +77,9 @@ export default function StartGameScreen() {
         {/* Tagline */}
         <motion.p
           variants={itemVariants}
-          className="font-sans font-bold text-xs sm:text-sm tracking-[0.25em] uppercase text-slate-500"
+          className="font-sans font-bold text-xs sm:text-sm tracking-[0.2em] uppercase text-slate-500 max-w-sm text-center"
         >
-          Your camera is the controller
+          Camera-powered party games where YOU are the controller
         </motion.p>
       </motion.div>
 
@@ -128,21 +133,18 @@ export default function StartGameScreen() {
 
           {/* Player 1 (Purple Silhouette - Left) */}
           <g>
-            {/* Body */}
             <path
               d="M105 240 C105 210 115 170 135 170 C155 170 165 210 165 240 Z"
               fill="var(--color-brand-purple)"
               stroke="#0f172a"
               strokeWidth="3"
             />
-            {/* Arms raised waving */}
             <path
               d="M110 190 Q90 160 95 140 Q100 120 115 145 Z"
               fill="var(--color-brand-purple)"
               stroke="#0f172a"
               strokeWidth="3"
             />
-            {/* Head */}
             <circle
               cx="135"
               cy="135"
@@ -151,7 +153,6 @@ export default function StartGameScreen() {
               stroke="#0f172a"
               strokeWidth="3"
             />
-            {/* Playful cartoon eyes */}
             <circle cx="127" cy="133" r="3" fill="#ffffff" />
             <circle cx="137" cy="133" r="3" fill="#ffffff" />
             <path d="M129 143 Q132 146 135 143" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
@@ -159,21 +160,18 @@ export default function StartGameScreen() {
 
           {/* Player 2 (Coral Silhouette - Right) */}
           <g>
-            {/* Body */}
             <path
               d="M235 240 C235 210 245 170 265 170 C285 170 295 210 295 240 Z"
               fill="var(--color-brand-coral)"
               stroke="#0f172a"
               strokeWidth="3"
             />
-            {/* Arms raised posing */}
             <path
               d="M290 190 Q310 160 305 140 Q300 120 285 145 Z"
               fill="var(--color-brand-coral)"
               stroke="#0f172a"
               strokeWidth="3"
             />
-            {/* Head */}
             <circle
               cx="265"
               cy="135"
@@ -182,7 +180,6 @@ export default function StartGameScreen() {
               stroke="#0f172a"
               strokeWidth="3"
             />
-            {/* Playful cartoon eyes */}
             <circle cx="257" cy="133" r="3" fill="#ffffff" />
             <circle cx="267" cy="133" r="3" fill="#ffffff" />
             <path d="M259 143 Q262 146 265 143" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
@@ -206,14 +203,24 @@ export default function StartGameScreen() {
         {/* Core Tagline: "Play. Move. Compete." */}
         <motion.h1
           variants={itemVariants}
-          className="font-display font-black text-3xl sm:text-4xl text-slate-800 tracking-tight leading-none mb-6"
+          className="font-display font-black text-3xl sm:text-4xl text-slate-800 tracking-tight leading-none mb-4"
         >
           Play. Move. <span className="text-brand-purple">Compete.</span>
         </motion.h1>
 
-        {/* CTA Button */}
-        <motion.div variants={itemVariants} className="mb-6 flex justify-center w-full">
+        {/* Primary CTA & Secondary How to Play Button */}
+        <motion.div variants={itemVariants} className="mb-4 flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-sm">
           <StartGameButton onClick={handleStart} />
+          
+          <button
+            onClick={() => {
+              soundFx.playClickSound();
+              setShowHowToPlay(true);
+            }}
+            className="px-5 py-3 rounded-2xl bg-white border-2 border-slate-950 text-slate-800 font-display font-black text-xs uppercase tracking-wider shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer"
+          >
+            How To Play
+          </button>
         </motion.div>
 
         {/* Games Capsule */}
@@ -226,6 +233,53 @@ export default function StartGameScreen() {
           <span>Solo & Co-op</span>
         </motion.div>
       </motion.div>
+
+      {/* HOW TO PLAY MODAL */}
+      {showHowToPlay && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade">
+          <div className="flex flex-col items-center text-center max-w-md w-full p-6 sm:p-8 bg-white border-[3px] border-slate-950 rounded-3xl shadow-chunky relative">
+            <h2 className="font-display font-black text-2xl text-slate-950 uppercase mb-4">
+              How VYBE Works
+            </h2>
+            
+            <div className="flex flex-col gap-3.5 text-left w-full mb-6 font-sans text-xs text-slate-650">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3">
+                <div className="w-7 h-7 rounded-xl bg-brand-purple text-white font-display font-black flex items-center justify-center shrink-0">1</div>
+                <div>
+                  <div className="font-display font-bold text-slate-900 text-sm">Camera is Your Controller</div>
+                  <div className="text-slate-500 mt-0.5">Turn on your webcam. VYBE tracks your body moves locally in real-time.</div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3">
+                <div className="w-7 h-7 rounded-xl bg-brand-coral text-white font-display font-black flex items-center justify-center shrink-0">2</div>
+                <div>
+                  <div className="font-display font-bold text-slate-900 text-sm">Choose Your Mode</div>
+                  <div className="text-slate-500 mt-0.5">Play Solo to beat your Personal Best, or grab a friend for 2-Player battle.</div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3">
+                <div className="w-7 h-7 rounded-xl bg-brand-yellow text-slate-950 font-display font-black flex items-center justify-center shrink-0">3</div>
+                <div>
+                  <div className="font-display font-bold text-slate-900 text-sm">Pick A Game</div>
+                  <div className="text-slate-500 mt-0.5"><strong>Copy Cat:</strong> Match reference poses.<br/><strong>Ice Breaker:</strong> React quickly to motion prompts!</div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                soundFx.playClickSound();
+                setShowHowToPlay(false);
+              }}
+              className="w-full py-3 bg-brand-purple text-white font-display font-black text-sm uppercase tracking-wider rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer"
+            >
+              Got It, Let's Play!
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Footer spacer */}
       <div className="hidden sm:block text-[9px] font-mono tracking-widest text-slate-400 uppercase pointer-events-none mt-2">

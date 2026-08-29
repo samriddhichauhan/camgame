@@ -24,7 +24,6 @@ export default function CameraPreview({ stream }: CameraPreviewProps) {
         <>
           {/* Mirrored Video Stream */}
           <video
-            id="vybe-webcam-video"
             ref={videoRef}
             autoPlay
             playsInline

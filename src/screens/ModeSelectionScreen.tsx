@@ -6,11 +6,14 @@ import { useGameSession } from '../context/GameSessionContext';
 import type { GameMode } from '../context/GameSessionContext';
 import PlayfulBackgroundShapes from '../components/PlayfulBackgroundShapes';
 
+import { soundFx } from '../utils/SoundEffects';
+
 export default function ModeSelectionScreen() {
   const navigate = useNavigate();
   const { setGameMode } = useGameSession();
 
   const handleSelectMode = (mode: GameMode) => {
+    soundFx.playClickSound();
     setGameMode(mode);
     navigate('/players');
   };

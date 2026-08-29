@@ -7,6 +7,8 @@ import PlayerSetupCard from '../components/PlayerSetupCard';
 import ProgressIndicator from '../components/ProgressIndicator';
 import PlayfulBackgroundShapes from '../components/PlayfulBackgroundShapes';
 
+import { soundFx } from '../utils/SoundEffects';
+
 const p1Avatars = ['🦊', '🐱', '🦁', '🐻'];
 const p2Avatars = ['🐸', '🐙', '🐨', '🐼'];
 
@@ -24,6 +26,7 @@ export default function PlayerSetupScreen() {
   } = useGameSession();
 
   const handleContinue = () => {
+    soundFx.playClickSound();
     if (isSessionReady()) {
       navigate('/games');
     }

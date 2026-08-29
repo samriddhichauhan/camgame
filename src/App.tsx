@@ -5,6 +5,7 @@ import PlayerSetupScreen from './screens/PlayerSetupScreen';
 import GameSelectionScreen from './screens/GameSelectionScreen';
 import CameraSetupScreen from './screens/CameraSetupScreen';
 import PlayGameScreen from './screens/PlayGameScreen';
+import VisionTestScreen from './screens/VisionTestScreen';
 import { GameSessionProvider } from './context/GameSessionContext';
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/games" element={<GameSelectionScreen />} />
           <Route path="/camera" element={<CameraSetupScreen />} />
           <Route path="/play" element={<PlayGameScreen />} />
+          <Route path="/vision-test" element={<VisionTestScreen />} />
         </Routes>
       </BrowserRouter>
     </GameSessionProvider>
