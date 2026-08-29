@@ -100,6 +100,12 @@ Game UI & Landmark Overlays (DetectedPlayerOverlay.tsx)
   - *Wave Both Arms*
 - **Scoring**: Up to 100 points per round based on reaction time speed.
 
+### 3. Reaction Rush ⚡
+- **Lightning Prompts**: Rapid visual action prompts (*Raise Left/Right/Both Hands*, *Touch Head*, *Crouch*, *Wave*, *Move Left*, *Move Right*).
+- **Single Player**: Compete against the clock to execute rapid gestures in under 3 seconds.
+- **Two Players**: Head-to-head speed battle — the FIRST player to execute correctly wins the round!
+- **Scoring**: Points awarded strictly for reaction speed (<600ms = 90-100 pts, <1000ms = 75-89 pts, <1600ms = 50-74 pts, <2500ms = 25-49 pts, Miss = 0 pts).
+
 ---
 
 ## 📁 Repository Sitemap
@@ -112,7 +118,8 @@ src/
 ├── game-data/               # Game definitions & metadata
 ├── games/
 │   ├── CopyCat/             # Copy Cat game loop & Cosine Similarity scoring
-│   └── IceBreaker/          # Ice Breaker gesture detectors & reaction timers
+│   ├── IceBreaker/          # Ice Breaker gesture detectors & reaction timers
+│   └── ReactionRush/        # Reaction Rush rapid gesture detection & speed racing
 ├── screens/                 # Application screens (Home, Mode, Players, Games, Camera)
 ├── utils/                   # Personal Best storage & Web Audio API synthesizer
 └── vision/                  # Shared vision engine & player tracking pipeline
