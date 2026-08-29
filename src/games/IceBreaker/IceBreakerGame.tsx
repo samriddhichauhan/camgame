@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
@@ -16,7 +16,6 @@ import {
   Grid
 } from 'lucide-react';
 import { useGameSession } from '../../context/GameSessionContext';
-import CameraPreview from '../../components/CameraPreview';
 import DetectedPlayerOverlay from '../../components/DetectedPlayerOverlay';
 import { visionEngine } from '../../vision/VisionEngine';
 import { useVisionSystem, useVisionFrameSubscription } from '../../vision/useVisionEngine';
@@ -38,6 +37,17 @@ export default function IceBreakerGame() {
   const { isReady, stream, starting, error } = useVisionSystem(requiredPlayers, player2.name);
   const cvStatus = isReady ? 'working' : starting ? 'initializing' : error ? 'error' : 'idle';
   const showDebugOverlay = import.meta.env.DEV;
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (videoRef.current) {
+      if (stream) {
+        videoRef.current.srcObject = stream;
+      } else {
+        videoRef.current.srcObject = null;
+      }
+    }
+  }, [stream]);
 
   // Tracked players state
   const [players, setPlayers] = useState<TrackedPlayer[]>([]);
@@ -172,14 +182,14 @@ export default function IceBreakerGame() {
 
   if (cvStatus === 'initializing') {
     return (
-      <div className="fixed inset-0 w-screen h-[100dvh] flex flex-col items-center justify-center bg-slate-950 text-white select-none">
-        <div className="flex flex-col items-center text-center p-8 bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl max-w-sm">
+      <div className="fixed inset-0 w-screen h-[100dvh] flex flex-col items-center justify-center bg-slate-950 text-white select-none z-50">
+        <div className="flex flex-col items-center text-center p-8 bg-slate-900/90 backdrop-blur-md border border-white/20 rounded-3xl max-w-sm">
           <div className="w-12 h-12 rounded-full border-4 border-dashed border-cyan-400 animate-spin mb-4" />
           <h2 className="font-display font-black text-xl text-white uppercase mb-1">
             Getting VYBE Ready...
           </h2>
           <p className="font-sans text-xs text-slate-300 font-semibold animate-pulse">
-            Loading 3D Ice Vision Models
+            Starting AR Live Camera Stream
           </p>
         </div>
       </div>
@@ -188,8 +198,8 @@ export default function IceBreakerGame() {
 
   if (cvStatus === 'error') {
     return (
-      <div className="fixed inset-0 w-screen h-[100dvh] flex flex-col items-center justify-center bg-slate-950 text-white select-none">
-        <div className="flex flex-col items-center text-center p-8 bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl max-w-sm">
+      <div className="fixed inset-0 w-screen h-[100dvh] flex flex-col items-center justify-center bg-slate-950 text-white select-none z-50">
+        <div className="flex flex-col items-center text-center p-8 bg-slate-900/90 backdrop-blur-md border border-white/20 rounded-3xl max-w-sm">
           <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500 flex items-center justify-center text-red-400 mb-4">
             <AlertTriangle className="w-6 h-6" />
           </div>
@@ -206,7 +216,7 @@ export default function IceBreakerGame() {
               visionEngine.stop();
               navigate('/games');
             }}
-            className="px-6 py-2.5 bg-cyan-500 text-slate-950 font-display font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer hover:bg-cyan-400"
+            className="px-6 py-2.5 bg-cyan-400 text-slate-950 font-display font-black text-xs uppercase tracking-wider rounded-xl cursor-pointer hover:bg-cyan-300"
           >
             Return to Games
           </button>
@@ -218,12 +228,20 @@ export default function IceBreakerGame() {
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] overflow-hidden bg-slate-950 text-white select-none">
       
-      {/* 1. Fullscreen WebRTC Camera Viewport & 3D Ice Canvas */}
-      <div className="absolute inset-0 w-full h-full">
-        <CameraPreview stream={stream} />
+      {/* 1. LAYER 1: Full-Screen Live WebRTC Video Background (100vw / 100dvh) */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="fixed inset-0 w-screen h-[100dvh] object-cover pointer-events-none"
+        style={{ transform: 'scaleX(-1)' }}
+      />
+
+      {/* 2. LAYER 2 & 3 & 4: 3D AR Ice Cubes & Virtual Fist Interactive Canvas */}
+      <div className="fixed inset-0 w-screen h-[100dvh] pointer-events-none">
         <DetectedPlayerOverlay players={players} />
 
-        {/* Arcade Interactive 3D Ice Cube & Fist Canvas */}
         <IceBreakerArenaCanvas
           players={players}
           isSolo={isSolo}
@@ -232,8 +250,8 @@ export default function IceBreakerGame() {
         />
       </div>
 
-      {/* 2. Top Arcade Floating Header HUD */}
-      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20 pointer-events-none">
+      {/* 3. LAYER 5: Minimal Floating AR Header HUD */}
+      <div className="fixed top-4 left-4 right-4 flex items-center justify-between z-20 pointer-events-none">
         <div className="flex items-center gap-2 pointer-events-auto">
           <button
             onClick={() => {
@@ -256,11 +274,11 @@ export default function IceBreakerGame() {
           </button>
         </div>
 
-        {/* Live Center HUD Banner */}
+        {/* Live Center AR HUD Title & Timer Banner */}
         <div className="flex flex-col items-center">
           <div className="font-display font-black text-xl text-white uppercase tracking-wider drop-shadow-md flex items-center gap-2">
             <span>ICE BREAKER</span>
-            {isSolo && <span className="text-cyan-400 text-xs font-mono font-bold">(SOLO)</span>}
+            {isSolo && <span className="text-cyan-400 text-xs font-mono font-bold">(AR SOLO)</span>}
           </div>
           {gameState === 'playing' && (
             <div className="flex items-center gap-2 mt-1">
@@ -288,35 +306,20 @@ export default function IceBreakerGame() {
         </div>
       </div>
 
-      {/* 3. Safety Pause Overlay */}
+      {/* 4. Non-blocking Tracking Guidance Warning Banner */}
       {['countdown', 'playing'].includes(gameState) && players.length < requiredPlayers && (
-        <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="flex flex-col items-center text-center p-8 bg-white border-[3px] border-slate-950 rounded-3xl shadow-chunky max-w-sm m-4 text-slate-900">
-            <div className="w-14 h-14 rounded-2xl bg-amber-400 border-2 border-slate-950 flex items-center justify-center text-slate-950 mb-4 shadow-chunky-sm animate-bounce">
-              <AlertTriangle className="w-7 h-7 stroke-[2.5]" />
-            </div>
-            <h3 className="font-display font-black text-xl text-slate-950 uppercase mb-2">
-              {isSolo
-                ? 'Step Into The Frame'
-                : players.length === 1
-                  ? 'Player 2, Step Into The Frame'
-                  : 'Step Into The Frame'}
-            </h3>
-            <p className="font-sans text-xs text-slate-600 font-semibold leading-relaxed">
-              {isSolo
-                ? 'We need your hands visible in the camera frame to punch 3D ice blocks!'
-                : players.length === 1
-                  ? `We need ${player2.name} in the camera frame to compete!`
-                  : 'We need both players fully visible in the camera frame to play!'}
-            </p>
-          </div>
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-amber-400/90 text-slate-950 border border-amber-500 px-4 py-1.5 rounded-full font-display font-black text-xs uppercase tracking-wider z-30 animate-pulse flex items-center gap-2 shadow-lg">
+          <AlertTriangle className="w-4 h-4" />
+          <span>
+            {isSolo ? 'Step into camera frame' : `Waiting for ${player2.name} in camera`}
+          </span>
         </div>
       )}
 
-      {/* 4. Game Over Results Overlay */}
+      {/* 5. Intro & Game Over Overlays */}
       <AnimatePresence>
         {gameState === 'intro' && (
-          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-30 p-4">
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-30 p-4">
             <motion.div
               variants={containerVariants}
               initial="hidden"
@@ -328,12 +331,12 @@ export default function IceBreakerGame() {
                 <Zap className="w-8 h-8 stroke-[2.5]" />
               </div>
               <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-2">
-                Ice Breaker
+                Ice Breaker AR
               </h2>
               <p className="font-sans text-xs text-slate-600 leading-relaxed font-semibold mb-6">
                 {isSolo
-                  ? 'Punch the floating 3D ice blocks with your virtual fists! Break as many ice cubes as possible before time runs out.'
-                  : 'Head-to-head 3D ice punching battle! Punch your arena ice blocks to break the highest score!'}
+                  ? 'Punch the 3D ice blocks floating around you in live camera view! Break as many ice cubes as possible before time expires.'
+                  : 'Head-to-head AR camera ice battle! Punch your arena ice blocks to break the highest score!'}
               </p>
 
               {isSolo && personalBest && (
@@ -350,23 +353,23 @@ export default function IceBreakerGame() {
                 onClick={handleStartGame}
                 className="w-full py-3.5 bg-purple-600 text-white font-display font-black text-base uppercase tracking-wider rounded-xl border-2 border-slate-950 cursor-pointer shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform"
               >
-                Start Game
+                Start AR Game
               </button>
             </motion.div>
           </div>
         )}
 
         {gameState === 'countdown' && (
-          <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+          <div className="fixed inset-0 flex items-center justify-center z-30 pointer-events-none">
             <div className="text-center">
               <span className="text-cyan-300 text-sm font-display font-black tracking-widest uppercase mb-1 block">READY TO PUNCH</span>
-              <span className="text-yellow-400 font-display font-black text-7xl drop-shadow-chunky animate-pulse">{countdown}</span>
+              <span className="text-yellow-400 font-display font-black text-8xl drop-shadow-chunky animate-pulse">{countdown}</span>
             </div>
           </div>
         )}
 
         {gameState === 'game-over' && (
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-40 p-4">
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-40 p-4">
             <motion.div
               variants={containerVariants}
               initial="hidden"
@@ -435,7 +438,7 @@ export default function IceBreakerGame() {
                 </>
               )}
 
-              {/* Action Buttons: Play Again / Change Game / Home */}
+              {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-sm">
                 <button
                   onClick={handleRestart}

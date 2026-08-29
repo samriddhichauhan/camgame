@@ -38,15 +38,15 @@ export default function IceBreakerArenaCanvas({
   const createIceParticles = (x: number, y: number): Particle[] => {
     const colors = ['#e0f2fe', '#bae6fd', '#7dd3fc', '#ffffff', '#38bdf8'];
     const particles: Particle[] = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 14; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 3 + Math.random() * 6;
+      const speed = 3.5 + Math.random() * 6.5;
       particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 1.5,
-        size: 4 + Math.random() * 8,
+        vy: Math.sin(angle) * speed - 2.0,
+        size: 4 + Math.random() * 9,
         opacity: 1.0,
         rotation: Math.random() * Math.PI * 2,
         color: colors[Math.floor(Math.random() * colors.length)]
@@ -55,58 +55,56 @@ export default function IceBreakerArenaCanvas({
     return particles;
   };
 
-  // Helper: Pattern-based Spawning
+  // Helper: AR Safe Zone Pattern Spawning (Keeps player face/body visible)
   const spawnPatternCubes = (owner: 1 | 2, width: number, height: number) => {
-    const minX = isSolo ? width * 0.12 : owner === 1 ? width * 0.08 : width * 0.56;
-    const maxX = isSolo ? width * 0.88 : owner === 1 ? width * 0.44 : owner === 2 ? width * 0.92 : width * 0.88;
-    const centerX = (minX + maxX) / 2;
-    const spreadX = (maxX - minX) * 0.35;
-
-    const minY = height * 0.22;
+    const minY = height * 0.20;
     const maxY = height * 0.72;
-    const centerY = (minY + maxY) / 2;
-
     const patternId = patternIndexRef.current % 4;
     patternIndexRef.current++;
 
     const newCubes: { x: number; y: number }[] = [];
 
-    if (patternId === 0) {
-      // Pattern A: Horizontal Trio
-      newCubes.push(
-        { x: centerX - spreadX, y: centerY },
-        { x: centerX, y: centerY - 25 },
-        { x: centerX + spreadX, y: centerY }
-      );
-    } else if (patternId === 1) {
-      // Pattern B: V-Shape
-      newCubes.push(
-        { x: centerX - spreadX * 0.8, y: centerY - 45 },
-        { x: centerX, y: centerY + 30 },
-        { x: centerX + spreadX * 0.8, y: centerY - 45 }
-      );
-    } else if (patternId === 2) {
-      // Pattern C: Stacked Block
-      newCubes.push(
-        { x: centerX - spreadX * 0.5, y: centerY + 35 },
-        { x: centerX + spreadX * 0.5, y: centerY + 35 },
-        { x: centerX, y: centerY - 35 }
-      );
+    if (isSolo) {
+      // Single Player Safe Zones (Flanking left & right sides around center body)
+      const leftX = width * 0.18;
+      const rightX = width * 0.82;
+      const topY = height * 0.25;
+      const midY = height * 0.50;
+      const botY = height * 0.70;
+
+      if (patternId === 0) {
+        newCubes.push({ x: leftX, y: topY }, { x: rightX, y: topY }, { x: leftX + 40, y: botY });
+      } else if (patternId === 1) {
+        newCubes.push({ x: leftX, y: midY }, { x: rightX, y: midY }, { x: rightX - 40, y: botY });
+      } else if (patternId === 2) {
+        newCubes.push({ x: leftX, y: topY }, { x: leftX, y: botY }, { x: rightX, y: midY });
+      } else {
+        newCubes.push({ x: rightX, y: topY }, { x: rightX, y: botY }, { x: leftX, y: midY });
+      }
     } else {
-      // Pattern D: Diamond Cluster
-      newCubes.push(
-        { x: centerX, y: centerY - 55 },
-        { x: centerX - spreadX * 0.7, y: centerY },
-        { x: centerX + spreadX * 0.7, y: centerY },
-        { x: centerX, y: centerY + 55 }
-      );
+      // Two Player Safe Zones (P1 Left vs P2 Right)
+      const minX = owner === 1 ? width * 0.08 : width * 0.56;
+      const maxX = owner === 1 ? width * 0.42 : width * 0.92;
+      const centerX = (minX + maxX) / 2;
+      const spreadX = (maxX - minX) * 0.35;
+      const centerY = (minY + maxY) / 2;
+
+      if (patternId === 0) {
+        newCubes.push({ x: centerX - spreadX, y: centerY }, { x: centerX + spreadX, y: centerY });
+      } else if (patternId === 1) {
+        newCubes.push({ x: centerX, y: centerY - 40 }, { x: centerX, y: centerY + 40 });
+      } else if (patternId === 2) {
+        newCubes.push({ x: centerX - spreadX * 0.8, y: centerY - 30 }, { x: centerX + spreadX * 0.8, y: centerY + 30 });
+      } else {
+        newCubes.push({ x: centerX - spreadX * 0.8, y: centerY + 30 }, { x: centerX + spreadX * 0.8, y: centerY - 30 });
+      }
     }
 
     newCubes.forEach((pos) => {
       cubesRef.current.push({
         id: Math.random().toString(36).substring(2, 9),
-        x: pos.x + (Math.random() - 0.5) * 15,
-        y: pos.y + (Math.random() - 0.5) * 15,
+        x: pos.x + (Math.random() - 0.5) * 10,
+        y: pos.y + (Math.random() - 0.5) * 10,
         radius: CUBE_RADIUS,
         state: 'spawning',
         spawnProgress: 0,
@@ -135,7 +133,7 @@ export default function IceBreakerArenaCanvas({
       const dt = Math.max(1, now - lastTimeRef.current);
       lastTimeRef.current = now;
 
-      // Handle Fullscreen 100vw / 100dvh Canvas Resize
+      // Match 100vw / 100dvh Canvas Fullscreen Size
       if (canvas.parentElement) {
         if (canvas.width !== canvas.parentElement.clientWidth || canvas.height !== canvas.parentElement.clientHeight) {
           canvas.width = canvas.parentElement.clientWidth;
@@ -150,46 +148,45 @@ export default function IceBreakerArenaCanvas({
 
       // 1. Draw Bottom 3D Ice Wall Platform
       ctx.save();
-      const platformY = height * 0.84;
-      const platHeight = height * 0.16;
+      const platformY = height * 0.85;
+      const platHeight = height * 0.15;
 
-      // Dark Blue Ocean Depth Base
+      // Semi-translucent Cyan Ice Platform Base
       const platGrad = ctx.createLinearGradient(0, platformY, 0, height);
-      platGrad.addColorStop(0, 'rgba(14, 116, 144, 0.85)');
-      platGrad.addColorStop(1, 'rgba(15, 23, 42, 0.98)');
+      platGrad.addColorStop(0, 'rgba(14, 116, 144, 0.65)');
+      platGrad.addColorStop(1, 'rgba(15, 23, 42, 0.85)');
       ctx.fillStyle = platGrad;
       ctx.fillRect(0, platformY, width, platHeight);
 
-      // Top Crystalline Highlight Edge
-      ctx.fillStyle = 'rgba(186, 230, 253, 0.9)';
-      ctx.fillRect(0, platformY - 4, width, 5);
+      // Top Specular Highlight Edge
+      ctx.fillStyle = 'rgba(224, 242, 254, 0.9)';
+      ctx.fillRect(0, platformY - 3, width, 4);
 
       // Interlocking Bottom 3D Ice Blocks Decorative Row
-      const blockWidth = 70;
+      const blockWidth = 72;
       const blockCount = Math.ceil(width / blockWidth) + 1;
       for (let i = 0; i < blockCount; i++) {
         const bx = i * blockWidth - 10;
-        const by = platformY - 14;
+        const by = platformY - 12;
 
-        ctx.fillStyle = 'rgba(125, 211, 252, 0.55)';
+        ctx.fillStyle = 'rgba(125, 211, 252, 0.45)';
         ctx.strokeStyle = '#0284c7';
         ctx.lineWidth = 2;
 
         ctx.beginPath();
-        ctx.roundRect(bx, by, blockWidth - 6, 28, 6);
+        ctx.roundRect(bx, by, blockWidth - 6, 26, 6);
         ctx.fill();
         ctx.stroke();
 
-        // Top glossy face
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.fillRect(bx + 4, by + 3, blockWidth - 14, 5);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+        ctx.fillRect(bx + 4, by + 3, blockWidth - 14, 4);
       }
       ctx.restore();
 
       // 2. Draw Dividing Line in Two Player Mode
       if (!isSolo) {
         ctx.save();
-        ctx.strokeStyle = 'rgba(124, 58, 237, 0.35)';
+        ctx.strokeStyle = 'rgba(124, 58, 237, 0.4)';
         ctx.lineWidth = 4;
         ctx.setLineDash([10, 10]);
         ctx.beginPath();
@@ -254,29 +251,26 @@ export default function IceBreakerArenaCanvas({
         }
       }
 
-      // 5. Render & Update 3D Ice Cubes
+      // 5. Render & Update 3D Translucent AR Ice Cubes
       cubesRef.current.forEach((cube) => {
         if (cube.state === 'broken') return;
 
-        // Handle Spawning Growth Animation (<300ms)
         if (cube.state === 'spawning') {
-          cube.spawnProgress += 0.08;
+          cube.spawnProgress += 0.09;
           if (cube.spawnProgress >= 1) {
             cube.spawnProgress = 1;
             cube.state = 'active';
           }
         }
 
-        // Subtle Floating Motion
         cube.x += cube.driftX;
         cube.y += cube.driftY;
         cube.rotation += cube.rotationSpeed;
 
-        // Keep cubes within arena boundaries
-        const minX = isSolo ? width * 0.1 : cube.owner === 1 ? width * 0.06 : width * 0.54;
-        const maxX = isSolo ? width * 0.9 : cube.owner === 1 ? width * 0.44 : width * 0.94;
+        const minX = isSolo ? width * 0.08 : cube.owner === 1 ? width * 0.06 : width * 0.54;
+        const maxX = isSolo ? width * 0.92 : cube.owner === 1 ? width * 0.44 : width * 0.94;
         if (cube.x < minX || cube.x > maxX) cube.driftX *= -1;
-        if (cube.y < height * 0.14 || cube.y > height * 0.78) cube.driftY *= -1;
+        if (cube.y < height * 0.15 || cube.y > height * 0.78) cube.driftY *= -1;
 
         // Collision Check with Owner's Fist
         const activeFist = cube.owner === 1 ? fistsRef.current.p1 : fistsRef.current.p2;
@@ -289,7 +283,7 @@ export default function IceBreakerArenaCanvas({
           activeFist.isPunching &&
           now - activeFist.lastHitAt > PUNCH_COOLDOWN_MS
         ) {
-          // PUNCH HIT IMPACT!
+          // IMPACT PUNCH HIT!
           activeFist.lastHitAt = now;
           cube.state = 'cracked';
           cube.crackProgress = 1;
@@ -316,7 +310,7 @@ export default function IceBreakerArenaCanvas({
           cube.state = 'breaking';
         }
 
-        // RENDER STUNNING 3D ISOMETRIC ICE CUBE
+        // RENDER STUNNING SEMI-TRANSLUCENT 3D AR ICE CUBE OVERLAY
         ctx.save();
 
         const curScale = cube.spawnProgress;
@@ -327,11 +321,11 @@ export default function IceBreakerArenaCanvas({
         ctx.scale(curScale, curScale);
         ctx.rotate(cube.rotation);
 
-        const s = cube.radius * 1.3; // 3D Cube edge length
-        const d = s * 0.35; // 3D Depth offset
+        const s = cube.radius * 1.35;
+        const d = s * 0.35;
 
         if (cube.state === 'breaking') {
-          // Render Explosion Shard Particles
+          // Explosion Shard Particles
           cube.particles.forEach((p) => {
             p.x += p.vx;
             p.y += p.vy;
@@ -355,27 +349,27 @@ export default function IceBreakerArenaCanvas({
             cube.state = 'broken';
           }
         } else {
-          // 1. Draw 3D Ground Drop Shadow
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.25)';
+          // 1. Drop Shadow
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.3)';
           ctx.beginPath();
-          ctx.ellipse(0, s / 2 + d + 8, s * 0.9, s * 0.3, 0, 0, Math.PI * 2);
+          ctx.ellipse(0, s / 2 + d + 8, s * 0.85, s * 0.28, 0, 0, Math.PI * 2);
           ctx.fill();
 
-          // 2. Draw 3D Front Face (Medium Ice Blue)
+          // 2. 3D Front Face (Semi-translucent Cyan Gradient)
           const frontGrad = ctx.createLinearGradient(-s / 2, -s / 2, s / 2, s / 2);
-          frontGrad.addColorStop(0, '#38bdf8');
-          frontGrad.addColorStop(1, '#0284c7');
+          frontGrad.addColorStop(0, 'rgba(56, 189, 248, 0.78)');
+          frontGrad.addColorStop(1, 'rgba(2, 132, 199, 0.85)');
           ctx.fillStyle = frontGrad;
           ctx.strokeStyle = '#0369a1';
           ctx.lineWidth = 2.5;
 
           ctx.beginPath();
-          ctx.roundRect(-s / 2, -s / 2, s, s, 6);
+          ctx.roundRect(-s / 2, -s / 2, s, s, 7);
           ctx.fill();
           ctx.stroke();
 
-          // 3. Draw 3D Top Face (Bright Specular Cyan)
-          ctx.fillStyle = '#e0f2fe';
+          // 3. 3D Top Face (Bright Specular White/Cyan)
+          ctx.fillStyle = 'rgba(224, 242, 254, 0.88)';
           ctx.beginPath();
           ctx.moveTo(-s / 2, -s / 2);
           ctx.lineTo(-s / 2 + d, -s / 2 - d);
@@ -385,8 +379,8 @@ export default function IceBreakerArenaCanvas({
           ctx.fill();
           ctx.stroke();
 
-          // 4. Draw 3D Right Side Face (Deep Ocean Blue)
-          ctx.fillStyle = '#0284c7';
+          // 4. 3D Right Side Face (Deep Blue)
+          ctx.fillStyle = 'rgba(2, 132, 199, 0.82)';
           ctx.beginPath();
           ctx.moveTo(s / 2, -s / 2);
           ctx.lineTo(s / 2 + d, -s / 2 - d);
@@ -396,16 +390,16 @@ export default function IceBreakerArenaCanvas({
           ctx.fill();
           ctx.stroke();
 
-          // 5. Specular Glossy Reflection Lines
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          // 5. Specular Glossy Reflection Highlight
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
           ctx.beginPath();
           ctx.roundRect(-s / 2 + 5, -s / 2 + 5, s * 0.35, s * 0.35, 3);
           ctx.fill();
 
-          // 6. Inner Crystalline Crack Vectors when Hit
+          // 6. Crack Vectors on Impact
           if (cube.crackProgress > 0) {
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 3.5;
             ctx.beginPath();
             ctx.moveTo(-s / 3, -s / 3);
             ctx.lineTo(0, 0);
@@ -419,16 +413,15 @@ export default function IceBreakerArenaCanvas({
         ctx.restore();
       });
 
-      // 6. Render Virtual Fist Indicators with Motion Trails
+      // 6. Render AR Virtual Fist Indicators with Motion Trails
       const drawFist = (fist: FistData, color: string, label: string) => {
         if (fist.x === 0 && fist.y === 0) return;
 
-        // Draw Motion Trail Lines
         fist.trail.forEach((pt) => {
           ctx.save();
-          ctx.fillStyle = `${color}${Math.floor(pt.opacity * 60).toString(16).padStart(2, '0')}`;
+          ctx.fillStyle = `${color}${Math.floor(pt.opacity * 65).toString(16).padStart(2, '0')}`;
           ctx.beginPath();
-          ctx.arc(pt.x, pt.y, FIST_RADIUS * 0.6, 0, Math.PI * 2);
+          ctx.arc(pt.x, pt.y, FIST_RADIUS * 0.65, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         });
@@ -436,28 +429,25 @@ export default function IceBreakerArenaCanvas({
         ctx.save();
         ctx.translate(fist.x, fist.y);
 
-        // Glowing Punch Energy Shockwave Ring
         if (fist.isPunching) {
-          ctx.strokeStyle = `${color}aa`;
+          ctx.strokeStyle = `${color}cc`;
           ctx.lineWidth = 4;
           ctx.beginPath();
           ctx.arc(0, 0, FIST_RADIUS * 1.6, 0, Math.PI * 2);
           ctx.stroke();
         }
 
-        // Virtual Fist Main Ring
         ctx.strokeStyle = color;
         ctx.lineWidth = 4;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
         ctx.shadowColor = color;
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = 18;
 
         ctx.beginPath();
         ctx.arc(0, 0, FIST_RADIUS, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
-        // Inner Label
         ctx.shadowBlur = 0;
         ctx.fillStyle = color;
         ctx.font = '900 14px system-ui, sans-serif';
@@ -483,9 +473,11 @@ export default function IceBreakerArenaCanvas({
 
           if (popup.opacity > 0) {
             ctx.save();
-            ctx.font = `900 ${Math.round(24 * popup.scale)}px system-ui, sans-serif`;
+            ctx.font = `900 ${Math.round(26 * popup.scale)}px system-ui, sans-serif`;
             ctx.fillStyle = popup.color;
             ctx.globalAlpha = popup.opacity;
+            ctx.shadowColor = '#000000';
+            ctx.shadowBlur = 4;
             ctx.fillText(popup.text, popup.x, popup.y);
             ctx.restore();
           } else {
