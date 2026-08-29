@@ -45,15 +45,15 @@ export default function IceBreakerArenaCanvas({
   const createIceParticles = (x: number, y: number): Particle[] => {
     const colors = ['#e0f2fe', '#bae6fd', '#7dd3fc', '#ffffff', '#38bdf8'];
     const particles: Particle[] = [];
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 18; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 4 + Math.random() * 7.5;
+      const speed = 4 + Math.random() * 8.5;
       particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed - 2.5,
-        size: 5 + Math.random() * 10,
+        size: 5 + Math.random() * 11,
         opacity: 1.0,
         rotation: Math.random() * Math.PI * 2,
         color: colors[Math.floor(Math.random() * colors.length)]
@@ -62,41 +62,77 @@ export default function IceBreakerArenaCanvas({
     return particles;
   };
 
-  // Helper: Spawning Large 3D Ice Cubes along the Bottom Row
-  const spawnBottomIceRow = (owner: 1 | 2, width: number, height: number) => {
-    const minY = height * 0.68;
+  // Helper: Spawning Large 3D Ice Cubes in U-Shape (Bottom + Left & Right Sides)
+  const spawnUshapedIceStructure = (owner: 1 | 2, width: number, height: number) => {
     patternIndexRef.current++;
-
     const newCubes: { x: number; y: number }[] = [];
 
     if (isSolo) {
-      // Single Player: Large 3D cubes distributed across full bottom area
-      const slots = [0.15, 0.32, 0.50, 0.68, 0.85];
-      slots.forEach((ratio, idx) => {
-        const yOffset = (idx % 2 === 0 ? 0 : 25) + (Math.random() - 0.5) * 10;
-        newCubes.push({ x: width * ratio, y: minY + yOffset });
-      });
+      // Single Player U-Shape: Bottom row + Left side curve + Right side curve surrounding central player
+      const bottomY = height * 0.76;
+      const midY = height * 0.54;
+      const topY = height * 0.34;
+
+      const leftX = width * 0.12;
+      const innerLeftX = width * 0.28;
+      const centerX = width * 0.50;
+      const innerRightX = width * 0.72;
+      const rightX = width * 0.88;
+
+      // Bottom row
+      newCubes.push(
+        { x: innerLeftX, y: bottomY },
+        { x: centerX, y: bottomY + 12 },
+        { x: innerRightX, y: bottomY }
+      );
+      // Left side stack
+      newCubes.push(
+        { x: leftX, y: bottomY - 15 },
+        { x: leftX + 15, y: midY },
+        { x: leftX, y: topY }
+      );
+      // Right side stack
+      newCubes.push(
+        { x: rightX, y: bottomY - 15 },
+        { x: rightX - 15, y: midY },
+        { x: rightX, y: topY }
+      );
     } else {
-      // Two Player: Left half (P1) vs Right half (P2) bottom rows
-      const slots = owner === 1 ? [0.12, 0.28, 0.42] : [0.58, 0.72, 0.88];
-      slots.forEach((ratio, idx) => {
-        const yOffset = (idx % 2 === 0 ? 0 : 20) + (Math.random() - 0.5) * 10;
-        newCubes.push({ x: width * ratio, y: minY + yOffset });
-      });
+      // Two Player: Left half (P1) U-Shape vs Right half (P2) U-Shape
+      const bottomY = height * 0.76;
+      const topY = height * 0.40;
+
+      if (owner === 1) {
+        newCubes.push(
+          { x: width * 0.08, y: topY },
+          { x: width * 0.10, y: bottomY },
+          { x: width * 0.26, y: bottomY + 10 },
+          { x: width * 0.42, y: bottomY },
+          { x: width * 0.44, y: topY }
+        );
+      } else {
+        newCubes.push(
+          { x: width * 0.56, y: topY },
+          { x: width * 0.58, y: bottomY },
+          { x: width * 0.74, y: bottomY + 10 },
+          { x: width * 0.90, y: bottomY },
+          { x: width * 0.92, y: topY }
+        );
+      }
     }
 
     newCubes.forEach((pos) => {
       cubesRef.current.push({
         id: Math.random().toString(36).substring(2, 9),
-        x: pos.x,
-        y: pos.y,
+        x: pos.x + (Math.random() - 0.5) * 8,
+        y: pos.y + (Math.random() - 0.5) * 8,
         radius: CUBE_RADIUS,
         state: 'spawning',
         spawnProgress: 0,
         crackProgress: 0,
         shakeOffset: { x: 0, y: 0 },
         rotation: (Math.random() - 0.5) * 0.15,
-        rotationSpeed: (Math.random() - 0.5) * 0.01,
+        rotationSpeed: (Math.random() - 0.5) * 0.008,
         driftX: (Math.random() - 0.5) * 0.2,
         driftY: (Math.random() - 0.5) * 0.2,
         owner,
@@ -130,39 +166,39 @@ export default function IceBreakerArenaCanvas({
 
       ctx.clearRect(0, 0, width, height);
 
-      // 1. Draw Bottom Physical Ice Wall Base
+      // 1. Draw Bottom Physical Ice Wall Foundation
       ctx.save();
-      const platformY = height * 0.84;
-      const platHeight = height * 0.16;
+      const platformY = height * 0.85;
+      const platHeight = height * 0.15;
 
       const platGrad = ctx.createLinearGradient(0, platformY, 0, height);
-      platGrad.addColorStop(0, 'rgba(14, 116, 144, 0.7)');
-      platGrad.addColorStop(1, 'rgba(15, 23, 42, 0.92)');
+      platGrad.addColorStop(0, 'rgba(14, 116, 144, 0.70)');
+      platGrad.addColorStop(1, 'rgba(15, 23, 42, 0.95)');
       ctx.fillStyle = platGrad;
       ctx.fillRect(0, platformY, width, platHeight);
 
-      // Top Specular Highlight Edge
+      // Top Specular Edge Highlight
       ctx.fillStyle = 'rgba(224, 242, 254, 0.95)';
       ctx.fillRect(0, platformY - 4, width, 5);
 
-      // Decorative Bottom Ice Block Foundation Row
-      const blockWidth = 85;
+      // Decorative Ice Foundation Blocks Row
+      const blockWidth = 90;
       const blockCount = Math.ceil(width / blockWidth) + 1;
       for (let i = 0; i < blockCount; i++) {
         const bx = i * blockWidth - 10;
-        const by = platformY - 14;
+        const by = platformY - 15;
 
         ctx.fillStyle = 'rgba(125, 211, 252, 0.5)';
         ctx.strokeStyle = '#0284c7';
         ctx.lineWidth = 2.5;
 
         ctx.beginPath();
-        ctx.roundRect(bx, by, blockWidth - 8, 30, 8);
+        ctx.roundRect(bx, by, blockWidth - 8, 32, 8);
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.fillRect(bx + 5, by + 4, blockWidth - 18, 5);
+        ctx.fillRect(bx + 6, by + 4, blockWidth - 20, 5);
       }
       ctx.restore();
 
@@ -207,7 +243,7 @@ export default function IceBreakerArenaCanvas({
             fist.vy = vy;
             fist.isPunching = speed > PUNCH_VELOCITY_THRESHOLD;
 
-            // Update Motion Trail
+            // Motion Trail update
             fist.trail.unshift({ x: targetX, y: targetY, opacity: 1.0 });
             if (fist.trail.length > 5) fist.trail.pop();
           }
@@ -226,22 +262,22 @@ export default function IceBreakerArenaCanvas({
         updateHandFist(fistsRef.current.p2Right, p2, 'right');
       }
 
-      // 4. Spawning Bottom Ice Cubes
+      // 4. Spawning U-Shaped Ice Structure
       if (isPlaying) {
         const p1Active = cubesRef.current.filter((c) => c.owner === 1 && c.state !== 'broken');
         if (p1Active.length === 0) {
-          spawnBottomIceRow(1, width, height);
+          spawnUshapedIceStructure(1, width, height);
         }
 
         if (!isSolo) {
           const p2Active = cubesRef.current.filter((c) => c.owner === 2 && c.state !== 'broken');
           if (p2Active.length === 0) {
-            spawnBottomIceRow(2, width, height);
+            spawnUshapedIceStructure(2, width, height);
           }
         }
       }
 
-      // 5. Update & Render Large 3D Ice Cubes
+      // 5. Update & Render Large Cartoon 3D Ice Cubes
       const activeFistsP1 = [fistsRef.current.p1Left, fistsRef.current.p1Right];
       const activeFistsP2 = [fistsRef.current.p2Left, fistsRef.current.p2Right];
 
@@ -260,10 +296,10 @@ export default function IceBreakerArenaCanvas({
         cube.y += cube.driftY;
         cube.rotation += cube.rotationSpeed;
 
-        const minX = isSolo ? width * 0.08 : cube.owner === 1 ? width * 0.06 : width * 0.54;
-        const maxX = isSolo ? width * 0.92 : cube.owner === 1 ? width * 0.44 : width * 0.94;
+        const minX = isSolo ? width * 0.06 : cube.owner === 1 ? width * 0.05 : width * 0.54;
+        const maxX = isSolo ? width * 0.94 : cube.owner === 1 ? width * 0.45 : width * 0.95;
         if (cube.x < minX || cube.x > maxX) cube.driftX *= -1;
-        if (cube.y < height * 0.55 || cube.y > height * 0.82) cube.driftY *= -1;
+        if (cube.y < height * 0.25 || cube.y > height * 0.82) cube.driftY *= -1;
 
         // COLLISION CHECK AGAINST BOTH LEFT AND RIGHT HANDS SIMULTANEOUSLY
         const targetFists = cube.owner === 1 ? activeFistsP1 : activeFistsP2;
@@ -279,7 +315,7 @@ export default function IceBreakerArenaCanvas({
             fist.isPunching &&
             now - fist.lastHitAt > PUNCH_COOLDOWN_MS
           ) {
-            // PUNCH HIT REGISTERED FOR THIS HAND!
+            // PUNCH HIT REGISTERED!
             fist.lastHitAt = now;
             cube.state = 'cracked';
             cube.crackProgress = 1;
@@ -306,7 +342,7 @@ export default function IceBreakerArenaCanvas({
           cube.state = 'breaking';
         }
 
-        // RENDER LARGE CHUNKY 3D ISOMETRIC ICE BLOCK
+        // RENDER LARGE CHUNKY CARTOON 3D ICE BLOCK
         ctx.save();
 
         const curScale = cube.spawnProgress;
@@ -317,11 +353,11 @@ export default function IceBreakerArenaCanvas({
         ctx.scale(curScale, curScale);
         ctx.rotate(cube.rotation);
 
-        const s = cube.radius * 1.45; // Large chunky size (~115px edge)
+        const s = cube.radius * 1.45; // Large chunky size (~120px edge)
         const d = s * 0.35;
 
         if (cube.state === 'breaking') {
-          // Explosion Particles
+          // Explosion Shard Particles
           cube.particles.forEach((p) => {
             p.x += p.vx;
             p.y += p.vy;
@@ -351,20 +387,20 @@ export default function IceBreakerArenaCanvas({
           ctx.ellipse(0, s / 2 + d + 10, s * 0.9, s * 0.3, 0, 0, Math.PI * 2);
           ctx.fill();
 
-          // 2. 3D Front Face Gradient
+          // 2. 3D Front Face Gradient (Bright Cartoon Blue/Cyan)
           const frontGrad = ctx.createLinearGradient(-s / 2, -s / 2, s / 2, s / 2);
           frontGrad.addColorStop(0, 'rgba(56, 189, 248, 0.82)');
           frontGrad.addColorStop(1, 'rgba(2, 132, 199, 0.90)');
           ctx.fillStyle = frontGrad;
           ctx.strokeStyle = '#0369a1';
-          ctx.lineWidth = 3;
+          ctx.lineWidth = 3.5;
 
           ctx.beginPath();
-          ctx.roundRect(-s / 2, -s / 2, s, s, 9);
+          ctx.roundRect(-s / 2, -s / 2, s, s, 10);
           ctx.fill();
           ctx.stroke();
 
-          // 3. 3D Top Specular Face
+          // 3. 3D Top Specular Face (Bright White/Cyan)
           ctx.fillStyle = 'rgba(224, 242, 254, 0.92)';
           ctx.beginPath();
           ctx.moveTo(-s / 2, -s / 2);
@@ -375,7 +411,7 @@ export default function IceBreakerArenaCanvas({
           ctx.fill();
           ctx.stroke();
 
-          // 4. 3D Right Side Face
+          // 4. 3D Right Side Face (Deep Ocean Blue)
           ctx.fillStyle = 'rgba(2, 132, 199, 0.88)';
           ctx.beginPath();
           ctx.moveTo(s / 2, -s / 2);
@@ -386,7 +422,7 @@ export default function IceBreakerArenaCanvas({
           ctx.fill();
           ctx.stroke();
 
-          // 5. Specular Reflection Highlight
+          // 5. Specular Glossy Highlight
           ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
           ctx.beginPath();
           ctx.roundRect(-s / 2 + 6, -s / 2 + 6, s * 0.35, s * 0.35, 4);
