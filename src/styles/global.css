@@ -92,3 +92,15 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-brand-purple);
 }
+
+.drop-shadow-chunky {
+  filter: drop-shadow(3px 3px 0px rgba(15, 23, 42, 0.9));
+}
+
+.glow-purple {
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
+}
+
+.glow-coral {
+  box-shadow: 0 0 20px rgba(255, 87, 87, 0.4);
+}
