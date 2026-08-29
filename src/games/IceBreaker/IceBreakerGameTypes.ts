@@ -1,29 +1,60 @@
-export type IceBreakerStatus = 
+export type IceBreakerStatus =
   | 'intro'
   | 'round-intro'
   | 'countdown'
-  | 'challenge-active'
-  | 'round-result'
+  | 'playing'
   | 'game-over';
 
-export interface IceBreakerChallenge {
+export type CubeState = 'active' | 'hit' | 'cracked' | 'breaking' | 'broken';
+
+export interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  opacity: number;
+  rotation: number;
+}
+
+export interface IceCubeData {
   id: string;
-  title: string;
-  instruction: string;
-  emoji: string;
-  detectorKey: string;
+  x: number;
+  y: number;
+  radius: number;
+  state: CubeState;
+  crackProgress: number; // 0 to 1
+  rotation: number;
+  rotationSpeed: number;
+  driftX: number;
+  driftY: number;
+  owner: 1 | 2;
+  particles: Particle[];
 }
 
-export interface PlayerRoundResult {
-  completed: boolean;
-  reactionTime: number | null; // in milliseconds
+export interface FistData {
+  owner: 1 | 2;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  isPunching: boolean;
+  lastHitAt: number;
+}
+
+export interface ScorePopup {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  color: string;
+  opacity: number;
+  createdAt: number;
+}
+
+export interface PlayerStats {
   score: number;
-}
-
-export interface IceBreakerRoundState {
-  roundNumber: number;
-  challenge: IceBreakerChallenge;
-  player1Result: PlayerRoundResult;
-  player2Result: PlayerRoundResult;
-  winner: 1 | 2 | 'draw' | null;
+  combo: number;
+  highestCombo: number;
+  lastHitTime: number;
 }

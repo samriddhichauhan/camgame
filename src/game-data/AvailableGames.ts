@@ -25,11 +25,11 @@ export const availableGames: GameDefinition[] = [
   {
     id: 'ice-breaker',
     name: 'Ice Breaker',
-    tagline: 'React fast. Break the ice. Score big.',
-    description: 'Physical reaction challenges! Strike motion gestures (hand raises, head touch, crouch, wave) before time expires.',
+    tagline: 'Punch the ice. Break the most.',
+    description: 'Arcade ice-smashing action! Punch floating 3D ice cubes with your virtual fists to shatter blocks and rack up combo points before time runs out.',
     gameNumber: '02',
-    focus: 'Reaction & Timing',
-    detectionType: 'ACTION DETECTION',
+    focus: 'Physical Punching',
+    detectionType: 'VIRTUAL FIST COLLISION',
     supportedModes: ['SINGLE_PLAYER', 'TWO_PLAYERS'],
   },
   {
