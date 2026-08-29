@@ -339,21 +339,25 @@ export default function IceBreakerArenaCanvas({
         drawFist(fistsRef.current.p2, '#ff5757', 'P2');
       }
 
-      // 6. Render Floating Score Popups
-      popupsRef.current.forEach((popup) => {
-        popup.y -= 1.2;
-        popup.opacity -= 0.02;
+      // 6. Efficiently Render & Prune Floating Score Popups
+      if (popupsRef.current.length > 0) {
+        ctx.font = '900 22px system-ui, sans-serif';
+        for (let i = popupsRef.current.length - 1; i >= 0; i--) {
+          const popup = popupsRef.current[i];
+          popup.y -= 1.2;
+          popup.opacity -= 0.02;
 
-        if (popup.opacity > 0) {
-          ctx.save();
-          ctx.font = '900 22px system-ui, sans-serif';
-          ctx.fillStyle = popup.color;
-          ctx.globalAlpha = popup.opacity;
-          ctx.fillText(popup.text, popup.x, popup.y);
-          ctx.restore();
+          if (popup.opacity > 0) {
+            ctx.save();
+            ctx.fillStyle = popup.color;
+            ctx.globalAlpha = popup.opacity;
+            ctx.fillText(popup.text, popup.x, popup.y);
+            ctx.restore();
+          } else {
+            popupsRef.current.splice(i, 1);
+          }
         }
-      });
-      popupsRef.current = popupsRef.current.filter((p) => p.opacity > 0);
+      }
 
       animationFrameId = requestAnimationFrame(render);
     };
