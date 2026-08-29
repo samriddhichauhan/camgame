@@ -32,14 +32,4 @@ export const availableGames: GameDefinition[] = [
     detectionType: 'ACTION DETECTION',
     supportedModes: ['SINGLE_PLAYER', 'TWO_PLAYERS'],
   },
-  {
-    id: 'reaction-rush',
-    name: 'Reaction Rush',
-    tagline: 'React first. Win first.',
-    description: 'A speed race! When visual prompts like "JUMP!" or "MOVE LEFT!" appear, the player who reacts first and fastest wins the round.',
-    gameNumber: '03',
-    focus: 'Speed',
-    detectionType: 'REACTION DETECTION',
-    supportedModes: [],
-  },
 ];
