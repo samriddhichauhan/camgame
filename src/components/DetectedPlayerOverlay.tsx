@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
-import type { DetectedPlayer, DetectedHand, HandLandmark } from '../computer-vision/ComputerVisionTypes';
+import type { TrackedPlayer } from '../vision/types/VisionTypes';
 
 interface DetectedPlayerOverlayProps {
-  players: DetectedPlayer[];
+  players: TrackedPlayer[];
 }
 
 const SKELETON_PAIRS = [
@@ -37,7 +37,7 @@ export default function DetectedPlayerOverlay({ players }: DetectedPlayerOverlay
         canvas.height = canvas.parentElement.clientHeight;
       }
     };
-    
+
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
@@ -58,7 +58,8 @@ export default function DetectedPlayerOverlay({ players }: DetectedPlayerOverlay
     players.forEach((player) => {
       // Determine theme colors based on player indexes (P1 Purple, P2 Coral)
       const color = player.playerIndex === 1 ? '#7c3aed' : '#ff5757';
-      const lighterColor = player.playerIndex === 1 ? '#a78bfa' : '#fca5a5';
+      const isLost = player.trackingState === 'lost';
+      ctx.globalAlpha = isLost ? 0.4 : 1;
 
       // 1. Draw Bounding Box
       const boxWidth = player.boundingBox.width * width;
@@ -67,7 +68,7 @@ export default function DetectedPlayerOverlay({ players }: DetectedPlayerOverlay
       const screenBoxY = height * player.boundingBox.y;
 
       ctx.beginPath();
-      ctx.setLineDash([5, 5]);
+      ctx.setLineDash(isLost ? [3, 3] : [5, 5]);
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
       ctx.strokeRect(screenBoxX, screenBoxY, boxWidth, boxHeight);
@@ -75,7 +76,7 @@ export default function DetectedPlayerOverlay({ players }: DetectedPlayerOverlay
 
       // 2. Draw Bounding Box Badge Label
       ctx.fillStyle = color;
-      const labelText = `PLAYER ${player.playerIndex}`;
+      const labelText = `PLAYER ${player.playerIndex}${isLost ? ' (LOST)' : ''}`;
       ctx.font = '900 10px Outfit, sans-serif';
       const textWidth = ctx.measureText(labelText).width;
       const paddingX = 6;
@@ -139,19 +140,7 @@ export default function DetectedPlayerOverlay({ players }: DetectedPlayerOverlay
         }
       });
 
-      // 5. Draw Hand landmarks if visible
-      const drawHand = (hand: DetectedHand) => {
-        ctx.fillStyle = lighterColor;
-        hand.landmarks.forEach((lm: HandLandmark) => {
-          const s = getScreenCoords(lm.x, lm.y);
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, 2, 0, 2 * Math.PI);
-          ctx.fill();
-        });
-      };
-
-      if (player.leftHand) drawHand(player.leftHand);
-      if (player.rightHand) drawHand(player.rightHand);
+      ctx.globalAlpha = 1;
     });
 
     return () => {
