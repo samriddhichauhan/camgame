@@ -42,6 +42,7 @@ export interface FistTrailPoint {
 }
 
 export interface FistData {
+  handSide: 'left' | 'right';
   owner: 1 | 2;
   x: number;
   y: number;

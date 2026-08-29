@@ -189,7 +189,7 @@ export default function IceBreakerGame() {
             Getting VYBE Ready...
           </h2>
           <p className="font-sans text-xs text-slate-300 font-semibold animate-pulse">
-            Starting AR Live Camera Stream
+            Initializing Dual-Hand Vision Engine
           </p>
         </div>
       </div>
@@ -226,255 +226,259 @@ export default function IceBreakerGame() {
   }
 
   return (
-    <div className="fixed inset-0 w-screen h-[100dvh] overflow-hidden bg-slate-950 text-white select-none">
+    <div className="fixed inset-0 w-screen h-[100dvh] bg-slate-950 p-2 sm:p-3 flex items-center justify-center overflow-hidden select-none">
       
-      {/* 1. LAYER 1: Full-Screen Live WebRTC Video Background (100vw / 100dvh) */}
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className="fixed inset-0 w-screen h-[100dvh] object-cover pointer-events-none"
-        style={{ transform: 'scaleX(-1)' }}
-      />
-
-      {/* 2. LAYER 2 & 3 & 4: 3D AR Ice Cubes & Virtual Fist Interactive Canvas */}
-      <div className="fixed inset-0 w-screen h-[100dvh] pointer-events-none">
-        <DetectedPlayerOverlay players={players} />
-
-        <IceBreakerArenaCanvas
-          players={players}
-          isSolo={isSolo}
-          isPlaying={gameState === 'playing' || gameState === 'countdown'}
-          onCubeBreak={handleCubeBreak}
+      {/* 95–98% VIEWPORT POLISHED RECTANGULAR GAME FRAME */}
+      <div className="relative w-full h-full max-w-[98vw] max-h-[96vh] rounded-3xl overflow-hidden border-[4px] border-slate-800 shadow-chunky-lg bg-slate-900 flex flex-col justify-between">
+        
+        {/* 1. Mirrored Camera Video Stream (Background inside Game Frame) */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          style={{ transform: 'scaleX(-1)' }}
         />
-      </div>
 
-      {/* 3. LAYER 5: Minimal Floating AR Header HUD */}
-      <div className="fixed top-4 left-4 right-4 flex items-center justify-between z-20 pointer-events-none">
-        <div className="flex items-center gap-2 pointer-events-auto">
-          <button
-            onClick={() => {
-              soundFx.playClickSound();
-              visionEngine.stop();
-              navigate('/games');
-            }}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-900/80 backdrop-blur-md border border-white/20 rounded-xl text-white font-display font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-800"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 stroke-[3]" />
-            <span>Quit</span>
-          </button>
+        {/* 2. Interactive Canvas Layer (3D Large Ice Blocks & Both Hands Tracking) */}
+        <div className="absolute inset-0 w-full h-full pointer-events-none">
+          <DetectedPlayerOverlay players={players} />
 
-          <button
-            onClick={handleToggleMute}
-            className="p-2 bg-slate-900/80 backdrop-blur-md border border-white/20 rounded-xl text-white hover:bg-slate-800 cursor-pointer"
-            title={isMuted ? 'Unmute Sound' : 'Mute Sound'}
-          >
-            {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
-          </button>
+          <IceBreakerArenaCanvas
+            players={players}
+            isSolo={isSolo}
+            isPlaying={gameState === 'playing' || gameState === 'countdown'}
+            onCubeBreak={handleCubeBreak}
+          />
         </div>
 
-        {/* Live Center AR HUD Title & Timer Banner */}
-        <div className="flex flex-col items-center">
-          <div className="font-display font-black text-xl text-white uppercase tracking-wider drop-shadow-md flex items-center gap-2">
-            <span>ICE BREAKER</span>
-            {isSolo && <span className="text-cyan-400 text-xs font-mono font-bold">(AR SOLO)</span>}
-          </div>
-          {gameState === 'playing' && (
-            <div className="flex items-center gap-2 mt-1">
-              <div className="px-3 py-1 bg-slate-900/90 border border-cyan-400/40 rounded-full font-mono font-black text-sm text-cyan-300 flex items-center gap-1.5 shadow-lg">
-                <Clock className="w-4 h-4 text-cyan-400 animate-pulse" />
-                <span>{timeLeft}s</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Player Scores Badges */}
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end bg-slate-900/80 backdrop-blur-md border border-purple-500/40 px-3 py-1.5 rounded-2xl shadow-lg">
-            <span className="text-[10px] font-display font-black text-purple-400 uppercase tracking-wider">{player1.name}</span>
-            <span className="font-display font-black text-lg text-white">{p1Stats.score} <span className="text-xs text-slate-400">cubes</span></span>
-          </div>
-
-          {!isSolo && (
-            <div className="flex flex-col items-end bg-slate-900/80 backdrop-blur-md border border-red-500/40 px-3 py-1.5 rounded-2xl shadow-lg">
-              <span className="text-[10px] font-display font-black text-red-400 uppercase tracking-wider">{player2.name}</span>
-              <span className="font-display font-black text-lg text-white">{p2Stats.score} <span className="text-xs text-slate-400">cubes</span></span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 4. Non-blocking Tracking Guidance Warning Banner */}
-      {['countdown', 'playing'].includes(gameState) && players.length < requiredPlayers && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-amber-400/90 text-slate-950 border border-amber-500 px-4 py-1.5 rounded-full font-display font-black text-xs uppercase tracking-wider z-30 animate-pulse flex items-center gap-2 shadow-lg">
-          <AlertTriangle className="w-4 h-4" />
-          <span>
-            {isSolo ? 'Step into camera frame' : `Waiting for ${player2.name} in camera`}
-          </span>
-        </div>
-      )}
-
-      {/* 5. Intro & Game Over Overlays */}
-      <AnimatePresence>
-        {gameState === 'intro' && (
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-30 p-4">
-            <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="flex flex-col items-center text-center max-w-md w-full p-8 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky text-slate-900"
+        {/* 3. Floating Arcade Top Score & Timer HUD */}
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-20 pointer-events-none">
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <button
+              onClick={() => {
+                soundFx.playClickSound();
+                visionEngine.stop();
+                navigate('/games');
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-950/80 backdrop-blur-md border border-white/20 rounded-xl text-white font-display font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-800"
             >
-              <div className="w-16 h-16 rounded-2xl bg-cyan-100 border-2 border-slate-950 flex items-center justify-center text-cyan-600 mb-4 shadow-chunky-sm">
-                <Zap className="w-8 h-8 stroke-[2.5]" />
-              </div>
-              <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-2">
-                Ice Breaker AR
-              </h2>
-              <p className="font-sans text-xs text-slate-600 leading-relaxed font-semibold mb-6">
-                {isSolo
-                  ? 'Punch the 3D ice blocks floating around you in live camera view! Break as many ice cubes as possible before time expires.'
-                  : 'Head-to-head AR camera ice battle! Punch your arena ice blocks to break the highest score!'}
-              </p>
+              <ArrowLeft className="w-3.5 h-3.5 stroke-[3]" />
+              <span>Quit</span>
+            </button>
 
-              {isSolo && personalBest && (
-                <div className="w-full py-2 px-4 bg-yellow-100 border-2 border-slate-950 rounded-2xl flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-2">
-                    <Trophy className="w-4 h-4 text-purple-600" />
-                    <span className="text-xs font-display font-black uppercase text-slate-950">Personal Best</span>
-                  </div>
-                  <span className="font-mono font-black text-sm text-purple-700">{personalBest.score} cubes</span>
+            <button
+              onClick={handleToggleMute}
+              className="p-1.5 bg-slate-950/80 backdrop-blur-md border border-white/20 rounded-xl text-white hover:bg-slate-800 cursor-pointer"
+              title={isMuted ? 'Unmute Sound' : 'Mute Sound'}
+            >
+              {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
+            </button>
+          </div>
+
+          {/* Center Title & Timer Banner */}
+          <div className="flex flex-col items-center">
+            <div className="font-display font-black text-lg text-white uppercase tracking-wider drop-shadow-md flex items-center gap-1.5">
+              <span>ICE BREAKER</span>
+              {isSolo && <span className="text-cyan-400 text-[10px] font-mono font-bold">(TWO-HAND DUAL)</span>}
+            </div>
+            {gameState === 'playing' && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="px-3 py-0.5 bg-slate-950/90 border border-cyan-400/50 rounded-full font-mono font-black text-xs text-cyan-300 flex items-center gap-1 shadow-lg">
+                  <Clock className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                  <span>{timeLeft}s</span>
                 </div>
-              )}
-
-              <button
-                onClick={handleStartGame}
-                className="w-full py-3.5 bg-purple-600 text-white font-display font-black text-base uppercase tracking-wider rounded-xl border-2 border-slate-950 cursor-pointer shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform"
-              >
-                Start AR Game
-              </button>
-            </motion.div>
+              </div>
+            )}
           </div>
-        )}
 
-        {gameState === 'countdown' && (
-          <div className="fixed inset-0 flex items-center justify-center z-30 pointer-events-none">
-            <div className="text-center">
-              <span className="text-cyan-300 text-sm font-display font-black tracking-widest uppercase mb-1 block">READY TO PUNCH</span>
-              <span className="text-yellow-400 font-display font-black text-8xl drop-shadow-chunky animate-pulse">{countdown}</span>
+          {/* Player Score Badges */}
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col items-end bg-slate-950/80 backdrop-blur-md border border-purple-500/50 px-3 py-1 rounded-xl shadow-lg">
+              <span className="text-[9px] font-display font-black text-purple-400 uppercase tracking-wider">{player1.name}</span>
+              <span className="font-display font-black text-base text-white">{p1Stats.score} <span className="text-[10px] text-slate-400">cubes</span></span>
             </div>
+
+            {!isSolo && (
+              <div className="flex flex-col items-end bg-slate-950/80 backdrop-blur-md border border-red-500/50 px-3 py-1 rounded-xl shadow-lg">
+                <span className="text-[9px] font-display font-black text-red-400 uppercase tracking-wider">{player2.name}</span>
+                <span className="font-display font-black text-base text-white">{p2Stats.score} <span className="text-[10px] text-slate-400">cubes</span></span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 4. Non-blocking Player Guidance Banner */}
+        {['countdown', 'playing'].includes(gameState) && players.length < requiredPlayers && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-amber-400/90 text-slate-950 border border-amber-500 px-4 py-1 rounded-full font-display font-black text-xs uppercase tracking-wider z-30 animate-pulse flex items-center gap-1.5 shadow-lg">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>
+              {isSolo ? 'Raise hands in camera frame' : `Waiting for ${player2.name}`}
+            </span>
           </div>
         )}
 
-        {gameState === 'game-over' && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-40 p-4">
-            <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="flex flex-col items-center text-center max-w-md w-full p-6 sm:p-8 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky text-slate-900"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-yellow-300 border-2 border-slate-950 flex items-center justify-center text-slate-950 mb-3 shadow-chunky-sm">
-                <Trophy className="w-7 h-7 stroke-[2.5]" />
+        {/* 5. Intro & Game Over Modal Overlays */}
+        <AnimatePresence>
+          {gameState === 'intro' && (
+            <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-xs flex items-center justify-center z-30 p-4">
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="flex flex-col items-center text-center max-w-md w-full p-8 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky text-slate-900"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-cyan-100 border-2 border-slate-950 flex items-center justify-center text-cyan-600 mb-4 shadow-chunky-sm">
+                  <Zap className="w-8 h-8 stroke-[2.5]" />
+                </div>
+                <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-2">
+                  Ice Breaker
+                </h2>
+                <p className="font-sans text-xs text-slate-600 leading-relaxed font-semibold mb-6">
+                  {isSolo
+                    ? 'Use BOTH your LEFT and RIGHT hands simultaneously to punch large 3D ice blocks along the bottom of the frame!'
+                    : 'Two-player 3D ice smash! Punch your bottom ice blocks using both hands to break the highest score!'}
+                </p>
+
+                {isSolo && personalBest && (
+                  <div className="w-full py-2 px-4 bg-yellow-100 border-2 border-slate-950 rounded-2xl flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-purple-600" />
+                      <span className="text-xs font-display font-black uppercase text-slate-950">Personal Best</span>
+                    </div>
+                    <span className="font-mono font-black text-sm text-purple-700">{personalBest.score} cubes</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleStartGame}
+                  className="w-full py-3.5 bg-purple-600 text-white font-display font-black text-base uppercase tracking-wider rounded-xl border-2 border-slate-950 cursor-pointer shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform"
+                >
+                  Start Game
+                </button>
+              </motion.div>
+            </div>
+          )}
+
+          {gameState === 'countdown' && (
+            <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+              <div className="text-center">
+                <span className="text-cyan-300 text-xs font-display font-black tracking-widest uppercase mb-1 block">PREPARE BOTH HANDS</span>
+                <span className="text-yellow-400 font-display font-black text-8xl drop-shadow-chunky animate-pulse">{countdown}</span>
               </div>
+            </div>
+          )}
 
-              <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-1">
-                Time's Up!
-              </h2>
+          {gameState === 'game-over' && (
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-40 p-4">
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="flex flex-col items-center text-center max-w-md w-full p-6 sm:p-8 rounded-3xl bg-white border-[3px] border-slate-950 shadow-chunky text-slate-900"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-yellow-300 border-2 border-slate-950 flex items-center justify-center text-slate-950 mb-3 shadow-chunky-sm">
+                  <Trophy className="w-7 h-7 stroke-[2.5]" />
+                </div>
 
-              {isSolo ? (
-                <>
-                  {isNewPb && (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600 text-white font-display font-black text-xs uppercase rounded-full mb-3 border border-slate-950">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>New Personal Best!</span>
-                    </div>
-                  )}
+                <h2 className="font-display font-black text-3xl text-slate-950 uppercase mb-1">
+                  Time's Up!
+                </h2>
 
-                  <div className="w-full p-5 border-2 border-slate-950 rounded-2xl bg-slate-50 flex flex-col items-center mb-6">
-                    <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider mb-1">Cubes Broken</span>
-                    <span className="font-display font-black text-4xl text-purple-600 mb-2">{p1Stats.score}</span>
-                    <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-600">
-                      <span>Best Combo: <strong className="text-slate-900">x{p1Stats.highestCombo}</strong></span>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="w-full flex flex-col gap-2 mb-6">
-                    <div className="flex justify-between items-center p-3 border-2 border-slate-950 rounded-2xl bg-slate-50">
-                      <div className="flex flex-col text-left">
-                        <span className="text-[10px] font-display font-black text-purple-600 uppercase tracking-wider">Player 1</span>
-                        <span className="font-display font-black text-base text-slate-800 uppercase mt-0.5">{player1.name}</span>
+                {isSolo ? (
+                  <>
+                    {isNewPb && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600 text-white font-display font-black text-xs uppercase rounded-full mb-3 border border-slate-950">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>New Personal Best!</span>
                       </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">Cubes Broken</span>
-                        <span className="font-display font-black text-xl text-slate-900 mt-0.5">{p1Stats.score}</span>
-                      </div>
-                    </div>
+                    )}
 
-                    <div className="flex justify-between items-center p-3 border-2 border-slate-950 rounded-2xl bg-slate-50">
-                      <div className="flex flex-col text-left">
-                        <span className="text-[10px] font-display font-black text-red-500 uppercase tracking-wider">Player 2</span>
-                        <span className="font-display font-black text-base text-slate-800 uppercase mt-0.5">{player2.name}</span>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">Cubes Broken</span>
-                        <span className="font-display font-black text-xl text-slate-900 mt-0.5">{p2Stats.score}</span>
+                    <div className="w-full p-5 border-2 border-slate-950 rounded-2xl bg-slate-50 flex flex-col items-center mb-6">
+                      <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider mb-1">Cubes Broken</span>
+                      <span className="font-display font-black text-4xl text-purple-600 mb-2">{p1Stats.score}</span>
+                      <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-600">
+                        <span>Best Combo: <strong className="text-slate-900">x{p1Stats.highestCombo}</strong></span>
                       </div>
                     </div>
-                  </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-full flex flex-col gap-2 mb-6">
+                      <div className="flex justify-between items-center p-3 border-2 border-slate-950 rounded-2xl bg-slate-50">
+                        <div className="flex flex-col text-left">
+                          <span className="text-[10px] font-display font-black text-purple-600 uppercase tracking-wider">Player 1</span>
+                          <span className="font-display font-black text-base text-slate-800 uppercase mt-0.5">{player1.name}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">Cubes Broken</span>
+                          <span className="font-display font-black text-xl text-slate-900 mt-0.5">{p1Stats.score}</span>
+                        </div>
+                      </div>
 
-                  <div className="px-6 py-3 border-2 border-slate-950 rounded-2xl bg-yellow-300 font-display font-black text-xl uppercase tracking-widest shadow-chunky-sm mb-8">
-                    {p1Stats.score === p2Stats.score
-                      ? "It's a Tie!"
-                      : p1Stats.score > p2Stats.score
-                        ? `WINNER: ${player1.name}`
-                        : `WINNER: ${player2.name}`}
-                  </div>
-                </>
-              )}
+                      <div className="flex justify-between items-center p-3 border-2 border-slate-950 rounded-2xl bg-slate-50">
+                        <div className="flex flex-col text-left">
+                          <span className="text-[10px] font-display font-black text-red-500 uppercase tracking-wider">Player 2</span>
+                          <span className="font-display font-black text-base text-slate-800 uppercase mt-0.5">{player2.name}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider">Cubes Broken</span>
+                          <span className="font-display font-black text-xl text-slate-900 mt-0.5">{p2Stats.score}</span>
+                        </div>
+                      </div>
+                    </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-sm">
-                <button
-                  onClick={handleRestart}
-                  className="w-full py-3 bg-purple-600 text-white font-display font-black text-sm uppercase tracking-wider rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>{isSolo ? 'Play Again' : 'Rematch'}</span>
-                </button>
+                    <div className="px-6 py-3 border-2 border-slate-950 rounded-2xl bg-yellow-300 font-display font-black text-xl uppercase tracking-widest shadow-chunky-sm mb-8">
+                      {p1Stats.score === p2Stats.score
+                        ? "It's a Tie!"
+                        : p1Stats.score > p2Stats.score
+                          ? `WINNER: ${player1.name}`
+                          : `WINNER: ${player2.name}`}
+                    </div>
+                  </>
+                )}
 
-                <button
-                  onClick={() => {
-                    soundFx.playClickSound();
-                    navigate('/games');
-                  }}
-                  className="w-full py-3 bg-white text-slate-800 font-display font-black text-sm uppercase tracking-wider rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Grid className="w-4 h-4" />
-                  <span>Change Game</span>
-                </button>
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-sm">
+                  <button
+                    onClick={handleRestart}
+                    className="w-full py-3 bg-purple-600 text-white font-display font-black text-sm uppercase tracking-wider rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>{isSolo ? 'Play Again' : 'Rematch'}</span>
+                  </button>
 
-                <button
-                  onClick={() => {
-                    soundFx.playClickSound();
-                    visionEngine.stop();
-                    navigate('/');
-                  }}
-                  className="w-full sm:w-auto p-3 bg-white text-slate-700 font-display font-black text-sm uppercase rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center"
-                  title="Home"
-                >
-                  <Home className="w-4 h-4" />
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                  <button
+                    onClick={() => {
+                      soundFx.playClickSound();
+                      navigate('/games');
+                    }}
+                    className="w-full py-3 bg-white text-slate-800 font-display font-black text-sm uppercase tracking-wider rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Grid className="w-4 h-4" />
+                    <span>Change Game</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      soundFx.playClickSound();
+                      visionEngine.stop();
+                      navigate('/');
+                    }}
+                    className="w-full sm:w-auto p-3 bg-white text-slate-700 font-display font-black text-sm uppercase rounded-xl border-2 border-slate-950 shadow-chunky-sm hover:-translate-y-0.5 active:translate-y-0.5 transition-transform cursor-pointer flex items-center justify-center"
+                    title="Home"
+                  >
+                    <Home className="w-4 h-4" />
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {showDebugOverlay && <VisionDebugOverlay requiredPlayers={requiredPlayers} showCanvas={false} />}
     </div>
